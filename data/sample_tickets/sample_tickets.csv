@@ -1,0 +1,21 @@
+ticket_id,subject,description,submitter_name,submitter_email,created_date,category
+TKT-001,Cannot reset my password,"I've been trying to reset my password for the client portal but the link in the email doesn't work. I've tried multiple times. Please help.",Maria Johnson,mjohnson@example.com,2025-03-01 09:15:00,password_reset
+TKT-002,Login not working,"I cannot log in to the portal. It says my credentials are invalid but I'm sure they're correct. I registered last week.",James Wilson,jwilson@email.org,2025-03-01 10:22:00,account_access
+TKT-003,Did not receive verification code,"I signed up but never got the email verification code. I checked spam folder. Can you resend?",Sarah Chen,s.chen@company.com,2025-03-01 11:05:00,account_access
+TKT-004,Video won't play in course,"The course video is stuck on loading. I've tried Chrome and Firefox. It's the Homeownership module.",Robert Davis,rdavis@mail.net,2025-03-02 08:30:00,learning_management
+TKT-005,Where is my workplan?,"I cannot find my workplan. I'm enrolled in Credit & Money Management but I don't see where to access it.",Linda Martinez,lmartinez@example.com,2025-03-02 09:45:00,client_portal
+TKT-006,HUD Certificate request,"I need to request my HUD certificate for completion. I finished all the requirements. How do I get it?",David Brown,dbrown@email.org,2025-03-02 14:20:00,hud_certificate
+TKT-007,Stuck on task - cannot proceed,"I'm stuck on Task 3 in the workplan. It says complete but the checkmark won't appear. I've refreshed multiple times.",Jennifer Lee,jlee@company.com,2025-03-03 09:00:00,client_portal
+TKT-008,Programs not showing on dashboard,"My programs are not showing on the dashboard. I was enrolled last month. I only see a blank page.",Michael Taylor,mtaylor@mail.net,2025-03-03 10:15:00,client_portal
+TKT-009,Delta SSO login issue,"I'm trying to log in through Delta SSO but it keeps redirecting me to an error page. I'm an employee.",Amanda White,awhite@delta.com,2025-03-03 11:30:00,delta_sso
+TKT-010,No coach assigned,"I completed intake but I haven't been assigned a coach yet. It's been 2 weeks. Who do I contact?",Christopher Clark,cclark@example.com,2025-03-03 13:00:00,coach_assignment
+TKT-011,Survey won't submit,"The intake survey won't submit. I filled everything out but the Submit button is grayed out. I'm on a Mac.",Patricia Garcia,pgarcia@email.org,2025-03-04 08:45:00,survey_issue
+TKT-012,No information in my account,"I logged in but there's no information in my account. No programs, no workplan, nothing. Is this normal?",Daniel Harris,dharris@company.com,2025-03-04 10:00:00,no_information
+TKT-013,Duplicate profile,"I think I have two accounts. I registered twice with different emails. Can you merge them or delete the duplicate?",Nancy Anderson,nanderson@mail.net,2025-03-04 11:20:00,duplicate_records
+TKT-014,LMS course not showing,"I was enrolled in the Financial Wellness course but it doesn't show in my LMS. I can see it in the portal but not in the learning platform.",Kevin Thompson,kthompson@example.com,2025-03-04 14:30:00,lms_enrollment
+TKT-015,No puedo restablecer mi contraseña,"He intentado restablecer mi contraseña varias veces pero no recibo el correo. Revisé la carpeta de spam. ¿Pueden ayudarme?",Carlos Rodriguez,crodriguez@email.org,2025-03-05 09:00:00,password_reset
+TKT-016,Problemas para iniciar sesión,"No puedo iniciar sesión en el portal. Dice que mi correo no está verificado pero ya lo hice.",Elena Vargas,evarvas@company.com,2025-03-05 10:30:00,account_access
+TKT-017,Video del curso no carga,"El video del módulo de Propiedad no se reproduce. Solo muestra una pantalla negra. ¿Hay otro enlace?",Fernando Lopez,flopez@mail.net,2025-03-05 11:45:00,learning_management
+TKT-018,Password reset - link expired,"The password reset link in my email says it expired. I tried to request a new one but haven't received it yet.",Susan Moore,smoore@example.com,2025-03-06 08:15:00,password_reset
+TKT-019,Login credentials invalid,"I'm getting 'invalid credentials' when I try to log in. I've reset my password twice. Can someone check my account?",Thomas Jackson,tjackson@email.org,2025-03-06 09:30:00,account_access
+TKT-020,Workplan not loading,"I click on Workplan but the page just spins. I've waited 5 minutes. Same on my phone.",Rebecca Wright,rwright@company.com,2025-03-06 10:45:00,client_portal
