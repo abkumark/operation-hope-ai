@@ -17,23 +17,71 @@ def client():
     return TestClient(app)
 
 
+@pytest.fixture
+def admin_headers(client):
+    """Login as admin and return auth headers."""
+    resp = client.post("/api/v1/auth/login", json={
+        "username": "admin",
+        "password": "admin123",
+    })
+    token = resp.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def engineer_headers(client):
+    """Login as engineer and return auth headers."""
+    resp = client.post("/api/v1/auth/login", json={
+        "username": "torri",
+        "password": "Welcome123",
+    })
+    token = resp.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
 class TestHealthEndpoint:
     def test_health_check(self, client):
         resp = client.get("/api/v1/health")
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "healthy"
+        assert "database" in data
+        assert "llm_provider" in data
+
+
+class TestAuthEndpoint:
+    def test_login_success(self, client):
+        resp = client.post("/api/v1/auth/login", json={
+            "username": "admin",
+            "password": "admin123",
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "access_token" in data
+        assert data["token_type"] == "bearer"
+        assert data["role"] == "admin"
+
+    def test_login_invalid_password(self, client):
+        resp = client.post("/api/v1/auth/login", json={
+            "username": "admin",
+            "password": "wrong",
+        })
+        assert resp.status_code == 401
+
+    def test_protected_endpoint_without_token(self, client):
+        resp = client.get("/api/v1/tickets")
+        assert resp.status_code == 401
 
 
 class TestTicketEndpoints:
     @patch("src.core.classifier.get_llm_provider")
-    def test_process_ticket(self, mock_provider, client):
+    def test_process_ticket(self, mock_provider, client, admin_headers):
         mock_provider.side_effect = Exception("No LLM")
         resp = client.post("/api/v1/tickets/process", json={
             "subject": "Password reset",
             "description": "I need help resetting my password",
             "submitter": "test@example.com",
-        })
+        }, headers=admin_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert "ticket_id" in data
@@ -42,30 +90,32 @@ class TestTicketEndpoints:
         assert data["processing_time_ms"] >= 0
 
     @patch("src.core.classifier.get_llm_provider")
-    def test_list_tickets(self, mock_provider, client):
+    def test_list_tickets(self, mock_provider, client, admin_headers):
         mock_provider.side_effect = Exception("No LLM")
         client.post("/api/v1/tickets/process", json={
             "subject": "Test ticket",
             "description": "Testing list endpoint",
-        })
-        resp = client.get("/api/v1/tickets")
+        }, headers=admin_headers)
+        resp = client.get("/api/v1/tickets", headers=admin_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] >= 1
+        assert "offset" in data
+        assert "limit" in data
 
     @patch("src.core.classifier.get_llm_provider")
-    def test_get_ticket_by_id(self, mock_provider, client):
+    def test_get_ticket_by_id(self, mock_provider, client, admin_headers):
         mock_provider.side_effect = Exception("No LLM")
         create_resp = client.post("/api/v1/tickets/process", json={
             "subject": "Test ticket",
             "description": "Testing get endpoint",
-        })
+        }, headers=admin_headers)
         ticket_id = create_resp.json()["ticket_id"]
-        resp = client.get(f"/api/v1/tickets/{ticket_id}")
+        resp = client.get(f"/api/v1/tickets/{ticket_id}", headers=admin_headers)
         assert resp.status_code == 200
         assert resp.json()["ticket_id"] == ticket_id
 
-    @patch("src.api.routes.process_ticket")
+    @patch("src.api.routers.tickets_router.process_ticket")
     def test_public_ticket_submission_requires_admin_resolution(self, mock_process_ticket, client):
         classification = ClassificationResult(
             category_id="password_reset",
@@ -95,7 +145,7 @@ class TestTicketEndpoints:
             response=None,
             approval=None,
             submitter_email="test@example.com",
-            status="PendingApproval",
+            status="WorkInProgress",
             ai_resolution="Use the password reset link to regain access.",
             processing_time_ms=12.5,
         )
@@ -114,32 +164,33 @@ class TestTicketEndpoints:
         assert data["ai_resolution"] is None
 
     @patch("src.core.classifier.get_llm_provider")
-    def test_resolve_ticket(self, mock_provider, client):
+    def test_resolve_ticket(self, mock_provider, client, admin_headers):
         mock_provider.side_effect = Exception("No LLM")
         create_resp = client.post("/api/v1/tickets/process", json={
             "subject": "Password reset",
             "description": "Need help resetting my password",
             "submitter": "test@example.com",
-        })
+        }, headers=admin_headers)
         ticket_id = create_resp.json()["ticket_id"]
 
         resp = client.post(f"/api/v1/tickets/{ticket_id}/resolve", json={
             "reviewer": "Admin",
             "ai_resolution": "Password reset steps were provided and access is restored.",
-        })
+        }, headers=admin_headers)
 
         assert resp.status_code == 200
-        assert resp.json()["ticket_status"] == "Approved"
+        assert resp.json()["ticket_status"] == "Completed"
 
-        detail_resp = client.get(f"/api/v1/tickets/{ticket_id}")
+        detail_resp = client.get(f"/api/v1/tickets/{ticket_id}", headers=admin_headers)
         assert detail_resp.status_code == 200
         detail = detail_resp.json()
-        assert detail["status"] == "Approved"
+        assert detail["status"] == "Completed"
         assert detail["ai_resolution"] == "Password reset steps were provided and access is restored."
 
-    @patch("src.api.routes.send_status_update")
+    @patch("src.api.routers.tickets_router.send_case_closed_email")
+    @patch("src.workflow.pipeline.upsert_ticket_embedding")
     @patch("src.core.classifier.get_llm_provider")
-    def test_resolve_ticket_sends_close_email(self, mock_provider, mock_send_status_update, client):
+    def test_resolve_ticket_sends_close_email(self, mock_provider, mock_embed, mock_send_closed, client, admin_headers):
         mock_provider.side_effect = Exception("No LLM")
         create_resp = client.post("/api/v1/tickets/submit", json={
             "subject": "Password reset",
@@ -152,19 +203,18 @@ class TestTicketEndpoints:
         resp = client.post(f"/api/v1/tickets/{ticket_id}/resolve", json={
             "reviewer": "Admin",
             "ai_resolution": "Password reset steps were provided and the ticket is now closed.",
-        })
+        }, headers=admin_headers)
 
         assert resp.status_code == 200
-        mock_send_status_update.assert_called_once_with(
+        mock_send_closed.assert_called_once_with(
             ticket_id=ticket_id,
             recipient_email="test@example.com",
             recipient_name="Test User",
-            new_status="closed",
-            details="Password reset steps were provided and the ticket is now closed.",
+            resolution_text="Password reset steps were provided and the ticket is now closed.",
         )
 
-    def test_get_nonexistent_ticket(self, client):
-        resp = client.get("/api/v1/tickets/nonexistent-id")
+    def test_get_nonexistent_ticket(self, client, admin_headers):
+        resp = client.get("/api/v1/tickets/nonexistent-id", headers=admin_headers)
         assert resp.status_code == 404
 
 
@@ -183,8 +233,8 @@ class TestKBEndpoints:
         assert "count" in data
         assert "articles" in data
 
-    def test_kb_search(self, client):
-        resp = client.get("/api/v1/kb/search", params={"query": "password reset"})
+    def test_kb_search(self, client, admin_headers):
+        resp = client.get("/api/v1/kb/search", params={"query": "password reset"}, headers=admin_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert "query" in data
@@ -193,57 +243,61 @@ class TestKBEndpoints:
 
 class TestApprovalEndpoints:
     @patch("src.core.classifier.get_llm_provider")
-    def test_list_approvals(self, mock_provider, client):
+    def test_list_approvals(self, mock_provider, client, admin_headers):
         mock_provider.side_effect = Exception("No LLM")
         client.post("/api/v1/tickets/process", json={
             "subject": "Password reset",
             "description": "Need password help",
-        })
-        resp = client.get("/api/v1/approvals")
+        }, headers=admin_headers)
+        resp = client.get("/api/v1/approvals", headers=admin_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert "count" in data
         assert "approvals" in data
 
     @patch("src.core.classifier.get_llm_provider")
-    def test_approve_ticket(self, mock_provider, client):
+    def test_approve_ticket(self, mock_provider, client, admin_headers):
         mock_provider.side_effect = Exception("No LLM")
         create_resp = client.post("/api/v1/tickets/process", json={
             "subject": "Password reset",
             "description": "Need password help",
-        })
+        }, headers=admin_headers)
         ticket_id = create_resp.json()["ticket_id"]
         resp = client.post(f"/api/v1/approvals/{ticket_id}/approve", json={
             "reviewer": "Admin",
             "final_response": "Your password has been reset.",
             "send": True,
-        })
+        }, headers=admin_headers)
         assert resp.status_code == 200
         assert resp.json()["status"] == "success"
 
-    def test_approve_nonexistent_ticket(self, client):
+    def test_approve_nonexistent_ticket(self, client, admin_headers):
         resp = client.post("/api/v1/approvals/fake-id/approve", json={
             "reviewer": "Admin",
-        })
+        }, headers=admin_headers)
         assert resp.status_code == 404
 
-    def test_reject_nonexistent_ticket(self, client):
+    def test_reject_nonexistent_ticket(self, client, admin_headers):
         resp = client.post("/api/v1/approvals/fake-id/reject", json={
             "reviewer": "Admin",
             "notes": "Not applicable",
-        })
+        }, headers=admin_headers)
         assert resp.status_code == 404
 
 
 class TestAnalyticsEndpoint:
-    def test_analytics_summary(self, client):
-        resp = client.get("/api/v1/analytics/summary")
+    def test_analytics_summary(self, client, admin_headers):
+        resp = client.get("/api/v1/analytics/summary", headers=admin_headers)
         assert resp.status_code == 200
+
+    def test_analytics_requires_auth(self, client):
+        resp = client.get("/api/v1/analytics/summary")
+        assert resp.status_code == 401
 
 
 class TestIntegrationEndpoint:
-    def test_integration_status(self, client):
-        resp = client.get("/api/v1/integration/status")
+    def test_integration_status(self, client, admin_headers):
+        resp = client.get("/api/v1/integration/status", headers=admin_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert "use_mock_dynamics" in data

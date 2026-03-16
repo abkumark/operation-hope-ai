@@ -1,7 +1,10 @@
+import logging
 from pathlib import Path
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings
+
+logger = logging.getLogger(__name__)
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -75,11 +78,17 @@ class Settings(BaseSettings):
     # Application
     app_env: str = Field(default="development")
     log_level: str = Field(default="INFO")
+    jwt_secret_key: str = Field(
+        default="", description="Override JWT secret for production"
+    )
     cors_origins: list[str] = Field(
         default_factory=lambda: ["http://localhost:8000", "http://127.0.0.1:8000"]
     )
     auto_ingest_kb_on_startup: bool = Field(default=True)
     use_mock_dynamics: bool = Field(default=True)
+    escalation_hours: float = Field(
+        default=24.0, description="Hours before an unresolved ticket is escalated"
+    )
 
     # Paths
     knowledge_base_dir: Path = Field(default=Path("data/knowledge_base"))
@@ -128,15 +137,63 @@ class Settings(BaseSettings):
 
 
 _settings = None
+_validated = False
+
+
+def _validate_config(settings: Settings) -> None:
+    """Log warnings for missing/misconfigured settings at startup."""
+    global _validated
+    if _validated:
+        return
+    _validated = True
+
+    warnings = []
+
+    # LLM configuration
+    if settings.active_provider == "fallback":
+        warnings.append(
+            "LLM provider is 'fallback' (rule-based). Set OPENAI_API_KEY, AZURE_OPENAI_KEY, "
+            "or LLM_PROVIDER=ollama for AI-powered classification and response generation."
+        )
+
+    # SMTP configuration
+    if not settings.smtp_username:
+        warnings.append(
+            "SMTP not configured (SMTP_USERNAME is empty). Emails will be logged but NOT sent. "
+            "Set SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD, and SMTP_SENDER in .env for email delivery."
+        )
+
+    # JWT secret
+    if not settings.jwt_secret_key and settings.app_env != "development":
+        warnings.append(
+            "JWT_SECRET_KEY is not set. Using a default key is INSECURE for production. "
+            "Set JWT_SECRET_KEY in your .env file."
+        )
+
+    # Dynamics 365
+    if not settings.use_mock_dynamics and not (
+        settings.dynamics_tenant_id and settings.dynamics_client_id
+    ):
+        warnings.append("Dynamics 365 is set to live mode but credentials are missing.")
+
+    for w in warnings:
+        logger.warning("⚠️  CONFIG: %s", w)
+
+    if not warnings:
+        logger.info("✅ Configuration validated: provider=%s, smtp=%s",
+                     settings.active_provider,
+                     "configured" if settings.smtp_username else "disabled")
 
 
 def get_settings() -> Settings:
     global _settings
     if _settings is None:
         _settings = Settings()
+        _validate_config(_settings)
     return _settings
 
 
 def reset_settings():
-    global _settings
+    global _settings, _validated
     _settings = None
+    _validated = False

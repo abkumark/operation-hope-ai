@@ -21,8 +21,13 @@ logger = logging.getLogger(__name__)
 
 
 def _is_smtp_configured() -> bool:
+    """Check if SMTP is actually configured (not just defaults).
+
+    Requires smtp_username to be set, because the default smtp_host='localhost'
+    and smtp_sender='noreply@...' would make this return True without a real server.
+    """
     settings = get_settings()
-    return bool(settings.smtp_host and settings.smtp_sender)
+    return bool(settings.smtp_host and settings.smtp_sender and settings.smtp_username)
 
 
 def _record_notification(
@@ -182,15 +187,18 @@ def send_status_update(
     normalized_status = new_status.strip().lower()
     status_label = {
         "approved": "Approved",
+        "completed": "Completed",
         "closed": "Closed",
         "sent": "Resolved & Sent",
         "rejected": "Needs More Information",
         "rerouted": "Rerouted to Another Team",
+        "workinprogress": "Work In Progress",
+        "in_review": "Under Review",
     }.get(normalized_status, normalized_status.replace("_", " ").title())
 
     email_subject = f"[{ticket_id}] Status update: {status_label}"
 
-    status_color = "#059669" if normalized_status in ("approved", "closed", "sent") else "#d97706"
+    status_color = "#059669" if normalized_status in ("approved", "closed", "sent", "completed") else "#d97706"
     safe_recipient_name = html.escape(recipient_name)
     safe_ticket_id = html.escape(ticket_id)
     safe_details = html.escape(details).replace("\n", "<br>")
@@ -268,6 +276,67 @@ def get_notifications_for_ticket(ticket_id: str) -> list[dict]:
     ]
 
 
+def send_case_closed_email(
+    ticket_id: str,
+    recipient_email: str,
+    recipient_name: str,
+    resolution_text: str = "",
+) -> None:
+    """Send a branded case-closed email when a ticket is resolved/closed."""
+    email_subject = f"[{ticket_id}] Your support request has been resolved"
+    safe_recipient_name = html.escape(recipient_name)
+    safe_ticket_id = html.escape(ticket_id)
+    safe_resolution = html.escape(resolution_text).replace("\n", "<br>") if resolution_text else ""
+
+    inner_html = f"""\
+<h2 style="margin:0 0 12px;color:#003E7E;font-size:20px;">Case Resolved</h2>
+<p style="color:#1e293b;font-size:14px;line-height:1.7;">
+  Hi {safe_recipient_name},
+</p>
+<p style="color:#1e293b;font-size:14px;line-height:1.7;">
+  Great news! Your support request <strong>{safe_ticket_id}</strong> has been resolved
+  and is now closed.
+</p>
+{"<table width='100%' style='margin:20px 0;background:#f0fdf4;border-left:4px solid #059669;border-radius:6px;padding:16px;'><tr><td><span style='font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#059669;'>Resolution</span><br><span style='font-size:14px;color:#1e293b;line-height:1.7;'>" + safe_resolution + "</span></td></tr></table>" if resolution_text else ""}
+<p style="color:#64748b;font-size:13px;line-height:1.7;">
+  If this did not fully resolve your issue, or if you have additional questions,
+  please reply with your ticket ID <strong>{safe_ticket_id}</strong> and we will reopen your case.
+</p>
+<p style="color:#64748b;font-size:13px;line-height:1.7;">
+  Thank you for your patience and for being part of the Operation HOPE community.
+</p>"""
+
+    text_body = (
+        f"Hi {recipient_name},\n\n"
+        f"Your support request {ticket_id} has been resolved and is now closed.\n\n"
+        f"{('Resolution: ' + resolution_text + chr(10) + chr(10)) if resolution_text else ''}"
+        f"If this did not fully resolve your issue, please reply with your ticket ID "
+        f"and we will reopen your case.\n\n"
+        f"Thank you,\n"
+        f"-- Operation HOPE"
+    )
+
+    html_body = _brand_html(inner_html)
+
+    if _is_smtp_configured():
+        try:
+            _send_email(recipient_email, email_subject, html_body, text_body)
+            _record_notification(ticket_id, recipient_email, email_subject, text_body[:200], status="sent")
+            logger.info("Case-closed email sent for %s to %s", ticket_id, recipient_email)
+        except Exception as exc:
+            _record_notification(
+                ticket_id, recipient_email, email_subject, text_body[:200],
+                status="failed", error_message=str(exc),
+            )
+            logger.warning("Failed to send case-closed email for %s: %s", ticket_id, exc)
+    else:
+        _record_notification(
+            ticket_id, recipient_email, email_subject, text_body[:200],
+            status="skipped_no_smtp",
+        )
+        logger.info("SMTP not configured; case-closed email for %s logged but not sent", ticket_id)
+
+
 def get_submitter_email(ticket_id: str) -> tuple[str, str]:
     """Look up submitter name and email for a ticket. Returns (name, email)."""
     init_database()
@@ -279,3 +348,195 @@ def get_submitter_email(ticket_id: str) -> tuple[str, str]:
     if row is None:
         return ("", "")
     return (row["submitter"], row["submitter_email"] or "")
+
+
+def send_new_ticket_queue_notification(
+    ticket_id: str,
+    subject: str,
+    submitter_name: str,
+    queue_name: str,
+    category_name: str,
+    recipients: list[tuple[str, str]],
+) -> None:
+    """Notify all queue/mailer members when a new ticket is created.
+
+    Args:
+        ticket_id: The ticket ID
+        subject: The ticket subject
+        submitter_name: Who submitted the ticket
+        queue_name: The queue the ticket was routed to
+        category_name: The AI-classified category
+        recipients: List of (display_name, email) tuples for queue members
+    """
+    if not recipients:
+        logger.info("No recipients to notify for new ticket %s in queue %s", ticket_id, queue_name)
+        return
+
+    import html as html_mod
+    safe_ticket_id = html_mod.escape(ticket_id)
+    safe_subject = html_mod.escape(subject)
+    safe_submitter = html_mod.escape(submitter_name)
+    safe_queue = html_mod.escape(queue_name)
+    safe_category = html_mod.escape(category_name)
+
+    email_subject = f"[{ticket_id}] New ticket assigned to {queue_name}"
+
+    for display_name, email_addr in recipients:
+        safe_name = html_mod.escape(display_name)
+
+        inner_html = f"""\
+<h2 style="margin:0 0 12px;color:#003E7E;font-size:20px;">New Ticket Alert</h2>
+<p style="color:#1e293b;font-size:14px;line-height:1.7;">
+  Hi {safe_name},
+</p>
+<p style="color:#1e293b;font-size:14px;line-height:1.7;">
+  A new support ticket has been submitted and routed to the <strong>{safe_queue}</strong> queue.
+</p>
+<table width="100%" style="margin:20px 0;background:#f7f8fa;border-radius:10px;padding:16px;">
+  <tr>
+    <td style="padding:4px 0;">
+      <span style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#64748b;">Ticket ID</span><br>
+      <strong style="font-size:16px;color:#003E7E;font-family:monospace;">{safe_ticket_id}</strong>
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:4px 0;">
+      <span style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#64748b;">Subject</span><br>
+      <span style="font-size:14px;color:#1e293b;">{safe_subject}</span>
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:4px 0;">
+      <span style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#64748b;">Submitted By</span><br>
+      <span style="font-size:14px;color:#1e293b;">{safe_submitter}</span>
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:4px 0;">
+      <span style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#64748b;">Category</span><br>
+      <span style="font-size:14px;color:#1e293b;">{safe_category}</span>
+    </td>
+  </tr>
+</table>
+<p style="color:#64748b;font-size:13px;line-height:1.7;">
+  Please log in to the HOPE AI portal to review and take action on this ticket.
+</p>"""
+
+        text_body = (
+            f"Hi {display_name},\n\n"
+            f"A new support ticket has been submitted and routed to the {queue_name} queue.\n\n"
+            f"Ticket ID: {ticket_id}\n"
+            f"Subject: {subject}\n"
+            f"Submitted By: {submitter_name}\n"
+            f"Category: {category_name}\n\n"
+            f"Please log in to the HOPE AI portal to review this ticket.\n\n"
+            f"-- Operation HOPE"
+        )
+
+        html_body = _brand_html(inner_html)
+
+        if _is_smtp_configured():
+            try:
+                _send_email(email_addr, email_subject, html_body, text_body)
+                _record_notification(ticket_id, email_addr, email_subject, text_body[:200], status="sent")
+                logger.info("Queue notification sent for %s to %s", ticket_id, email_addr)
+            except Exception as exc:
+                _record_notification(
+                    ticket_id, email_addr, email_subject, text_body[:200],
+                    status="failed", error_message=str(exc),
+                )
+                logger.warning("Failed to send queue notification for %s to %s: %s", ticket_id, email_addr, exc)
+        else:
+            _record_notification(
+                ticket_id, email_addr, email_subject, text_body[:200],
+                status="skipped_no_smtp",
+            )
+            logger.info("SMTP not configured; queue notification for %s to %s logged but not sent", ticket_id, email_addr)
+
+
+def send_escalation_notification(
+    ticket_id: str,
+    subject: str,
+    queue_name: str,
+    hours_open: float,
+    recipients: list[tuple[str, str]],
+) -> None:
+    """Send escalation email to queue mailer list when a ticket has been unresolved too long.
+
+    Args:
+        ticket_id: The ticket ID
+        subject: The ticket subject
+        queue_name: The queue the ticket belongs to
+        hours_open: How many hours the ticket has been open
+        recipients: List of (display_name, email) tuples for queue members
+    """
+    if not recipients:
+        logger.info("No recipients for escalation notification for %s", ticket_id)
+        return
+
+    import html as html_mod
+    safe_ticket_id = html_mod.escape(ticket_id)
+    safe_subject = html_mod.escape(subject)
+    safe_queue = html_mod.escape(queue_name)
+    hours_str = f"{hours_open:.1f}"
+
+    email_subject = f"⚠️ [{ticket_id}] ESCALATION: Ticket unresolved for {hours_str} hours"
+
+    for display_name, email_addr in recipients:
+        safe_name = html_mod.escape(display_name)
+
+        inner_html = f"""\
+<h2 style="margin:0 0 12px;color:#dc2626;font-size:20px;">⚠️ Escalation Alert</h2>
+<p style="color:#1e293b;font-size:14px;line-height:1.7;">
+  Hi {safe_name},
+</p>
+<p style="color:#1e293b;font-size:14px;line-height:1.7;">
+  The following ticket in the <strong>{safe_queue}</strong> queue has been unresolved for
+  <strong>{hours_str} hours</strong> and requires immediate attention.
+</p>
+<table width="100%" style="margin:20px 0;background:#fef2f2;border-left:4px solid #dc2626;border-radius:6px;padding:16px;">
+  <tr>
+    <td>
+      <span style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#dc2626;">Ticket ID</span><br>
+      <strong style="font-size:16px;color:#003E7E;font-family:monospace;">{safe_ticket_id}</strong>
+    </td>
+  </tr>
+  <tr>
+    <td style="padding-top:8px;">
+      <span style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#dc2626;">Subject</span><br>
+      <span style="font-size:14px;color:#1e293b;">{safe_subject}</span>
+    </td>
+  </tr>
+</table>
+<p style="color:#64748b;font-size:13px;line-height:1.7;">
+  Please log in to the HOPE AI portal and resolve this ticket as soon as possible.
+</p>"""
+
+        text_body = (
+            f"Hi {display_name},\n\n"
+            f"ESCALATION ALERT: Ticket {ticket_id} in the {queue_name} queue has been "
+            f"unresolved for {hours_str} hours.\n\n"
+            f"Subject: {subject}\n\n"
+            f"Please log in and resolve this ticket immediately.\n\n"
+            f"-- Operation HOPE"
+        )
+
+        html_body = _brand_html(inner_html)
+
+        if _is_smtp_configured():
+            try:
+                _send_email(email_addr, email_subject, html_body, text_body)
+                _record_notification(ticket_id, email_addr, email_subject, text_body[:200], status="sent")
+                logger.info("Escalation notification sent for %s to %s", ticket_id, email_addr)
+            except Exception as exc:
+                _record_notification(
+                    ticket_id, email_addr, email_subject, text_body[:200],
+                    status="failed", error_message=str(exc),
+                )
+                logger.warning("Failed to send escalation notification for %s to %s: %s", ticket_id, email_addr, exc)
+        else:
+            _record_notification(
+                ticket_id, email_addr, email_subject, text_body[:200],
+                status="skipped_no_smtp",
+            )
+            logger.info("SMTP not configured; escalation notification for %s to %s logged but not sent", ticket_id, email_addr)

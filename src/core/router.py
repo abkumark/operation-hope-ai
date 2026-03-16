@@ -1,4 +1,8 @@
-"""Intelligent ticket routing engine with confidence-based decision making."""
+"""Intelligent ticket routing engine with confidence-based decision making.
+
+Uses feedback-adjusted thresholds: categories with poor satisfaction
+automatically require higher confidence for auto-resolution.
+"""
 
 from dataclasses import dataclass
 from enum import Enum
@@ -7,6 +11,7 @@ from config.categories import TICKET_CATEGORIES, get_auto_resolvable_categories
 from config.routing_rules import get_queue_for_category
 from config.settings import get_settings
 from src.core.classifier import ClassificationResult
+from src.core.confidence import get_feedback_adjusted_threshold
 
 
 class RoutingAction(str, Enum):
@@ -54,10 +59,18 @@ def route_ticket(classification: ClassificationResult) -> RoutingDecision:
     auto_resolvable_categories = get_auto_resolvable_categories()
     is_auto_resolvable = classification.category_id in auto_resolvable_categories
 
+    # Adjust thresholds based on historical feedback for this category
+    auto_threshold = get_feedback_adjusted_threshold(
+        settings.auto_resolve_threshold, classification.category_id,
+    )
+    instant_threshold = get_feedback_adjusted_threshold(
+        settings.instant_resolve_threshold, classification.category_id,
+    )
+
     if (
         settings.instant_resolve_enabled
         and is_auto_resolvable
-        and classification.confidence >= settings.instant_resolve_threshold
+        and classification.confidence >= instant_threshold
     ):
         return RoutingDecision(
             action=RoutingAction.AUTO_RESOLVE,
@@ -68,7 +81,7 @@ def route_ticket(classification: ClassificationResult) -> RoutingDecision:
             requires_approval=True,
         )
 
-    if classification.confidence >= settings.auto_resolve_threshold and is_auto_resolvable:
+    if classification.confidence >= auto_threshold and is_auto_resolvable:
         return RoutingDecision(
             action=RoutingAction.AUTO_RESOLVE,
             queue=queue,

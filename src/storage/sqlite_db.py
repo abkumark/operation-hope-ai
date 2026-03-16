@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+import logging
 import sqlite3
+import threading
 from pathlib import Path
 
 from config.settings import get_settings
+
+logger = logging.getLogger(__name__)
+
+# ── Thread-safe connection pool (one connection per thread) ──────────────
+_local = threading.local()
 
 
 def _db_path() -> Path:
@@ -16,9 +23,35 @@ def _db_path() -> Path:
 
 
 def get_connection() -> sqlite3.Connection:
-    connection = sqlite3.connect(_db_path(), check_same_thread=False)
+    """Return a thread-local SQLite connection with WAL mode enabled."""
+    conn = getattr(_local, "connection", None)
+    db = _db_path()
+    # Re-use connection if same DB path and still open
+    if conn is not None:
+        try:
+            conn.execute("SELECT 1")
+            if getattr(_local, "db_path", None) == str(db):
+                return conn
+        except Exception:
+            pass  # stale connection, recreate
+    connection = sqlite3.connect(str(db), check_same_thread=False, timeout=30)
     connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA journal_mode=WAL")
+    connection.execute("PRAGMA busy_timeout=5000")
+    _local.connection = connection
+    _local.db_path = str(db)
     return connection
+
+
+def close_connection() -> None:
+    """Explicitly close the thread-local connection (call at shutdown)."""
+    conn = getattr(_local, "connection", None)
+    if conn is not None:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        _local.connection = None
 
 
 def _migrate_tickets_table(connection: sqlite3.Connection) -> None:
@@ -31,6 +64,9 @@ def _migrate_tickets_table(connection: sqlite3.Connection) -> None:
         "ai_resolution": "ALTER TABLE tickets ADD COLUMN ai_resolution TEXT NOT NULL DEFAULT ''",
         "similar_ticket_ids": "ALTER TABLE tickets ADD COLUMN similar_ticket_ids TEXT NOT NULL DEFAULT '[]'",
         "assigned_to": "ALTER TABLE tickets ADD COLUMN assigned_to TEXT NOT NULL DEFAULT ''",
+        "phone_number": "ALTER TABLE tickets ADD COLUMN phone_number TEXT NOT NULL DEFAULT ''",
+        "created_at": "ALTER TABLE tickets ADD COLUMN created_at TEXT NOT NULL DEFAULT ''",
+        "updated_at": "ALTER TABLE tickets ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''",
     }
     for col, sql in migrations.items():
         if col not in existing_columns:
@@ -54,6 +90,7 @@ def init_database() -> None:
                 description TEXT NOT NULL,
                 submitter TEXT NOT NULL,
                 submitter_email TEXT NOT NULL DEFAULT '',
+                phone_number TEXT NOT NULL DEFAULT '',
                 status TEXT NOT NULL DEFAULT 'Open',
                 ai_resolution TEXT NOT NULL DEFAULT '',
                 similar_ticket_ids TEXT NOT NULL DEFAULT '[]',
@@ -62,7 +99,9 @@ def init_database() -> None:
                 routing_json TEXT NOT NULL,
                 response_json TEXT,
                 processed_at TEXT NOT NULL,
-                processing_time_ms REAL NOT NULL
+                processing_time_ms REAL NOT NULL,
+                created_at TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL DEFAULT ''
             );
 
             CREATE TABLE IF NOT EXISTS approvals (
@@ -153,9 +192,25 @@ def init_database() -> None:
                 comment TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL
             );
+
+            -- Performance indexes
+            CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);
+            CREATE INDEX IF NOT EXISTS idx_tickets_assigned_to ON tickets(assigned_to);
+            CREATE INDEX IF NOT EXISTS idx_tickets_processed_at ON tickets(processed_at);
+            CREATE INDEX IF NOT EXISTS idx_approvals_status ON approvals(status);
+            CREATE INDEX IF NOT EXISTS idx_email_notifications_ticket ON email_notifications(ticket_id);
+            CREATE INDEX IF NOT EXISTS idx_approval_events_ticket ON approval_events(ticket_id);
+            CREATE INDEX IF NOT EXISTS idx_metrics_category ON metrics(category);
+            CREATE INDEX IF NOT EXISTS idx_resolution_feedback_ticket ON resolution_feedback(ticket_id);
             """
         )
+        # Run migrations BEFORE creating indexes on migrated columns
         _migrate_tickets_table(connection)
+        # Now safe to create indexes on columns added by migration
+        connection.executescript("""
+            CREATE INDEX IF NOT EXISTS idx_tickets_created_at ON tickets(created_at);
+            CREATE INDEX IF NOT EXISTS idx_tickets_updated_at ON tickets(updated_at);
+        """)
 
 
 def next_ticket_id() -> str:
@@ -177,6 +232,7 @@ def create_placeholder_ticket(
     description: str,
     submitter: str,
     submitter_email: str = "",
+    phone_number: str = "",
 ) -> None:
     """Insert a minimal ticket row so the ID is reserved and visible immediately.
 
@@ -187,15 +243,16 @@ def create_placeholder_ticket(
     init_database()
     placeholder_classification = '{"category_id":"pending","category_name":"Processing…","confidence":0,"language":"en","sentiment":"neutral","urgency":"medium","is_hr":false,"summary":"","raw_text":""}'
     placeholder_routing = '{"action":"pending","queue":"","reason":"AI processing in progress","requires_approval":false}'
+    now = datetime.now().isoformat()
     with get_connection() as conn:
         conn.execute(
             """
             INSERT OR IGNORE INTO tickets (
-                ticket_id, subject, description, submitter, submitter_email,
+                ticket_id, subject, description, submitter, submitter_email, phone_number,
                 status, ai_resolution, similar_ticket_ids, assigned_to,
                 classification_json, routing_json, response_json,
-                processed_at, processing_time_ms
-            ) VALUES (?, ?, ?, ?, ?, 'Processing', '', '[]', '', ?, ?, NULL, ?, 0)
+                processed_at, processing_time_ms, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, 'Processing', '', '[]', '', ?, ?, NULL, ?, 0, ?, ?)
             """,
             (
                 ticket_id,
@@ -203,9 +260,12 @@ def create_placeholder_ticket(
                 description,
                 submitter,
                 submitter_email,
+                phone_number,
                 placeholder_classification,
                 placeholder_routing,
-                datetime.now().isoformat(),
+                now,
+                now,
+                now,
             ),
         )
 
@@ -223,9 +283,29 @@ def delete_ticket(ticket_id: str) -> bool:
 
 
 def update_ticket_fields(ticket_id: str, **fields: str) -> bool:
-    """Update arbitrary text fields on a ticket row. Returns True if the ticket existed."""
+    """Update arbitrary text fields on a ticket row. Returns True if the ticket existed.
+
+    Only whitelisted column names are allowed to prevent SQL injection.
+    Automatically sets updated_at to the current timestamp on every call.
+    """
+    from datetime import datetime
+
+    _ALLOWED_COLUMNS = {
+        "subject", "description", "submitter", "submitter_email", "phone_number",
+        "status", "ai_resolution", "similar_ticket_ids", "assigned_to",
+        "classification_json", "routing_json", "response_json",
+        "created_at", "updated_at",
+    }
     if not fields:
         return False
+    # Validate column names against whitelist
+    invalid_cols = set(fields.keys()) - _ALLOWED_COLUMNS
+    if invalid_cols:
+        raise ValueError(f"Invalid column names: {invalid_cols}. Allowed: {_ALLOWED_COLUMNS}")
+
+    # Always update the updated_at timestamp on any field change
+    fields["updated_at"] = datetime.now().isoformat()
+
     init_database()
     set_clause = ", ".join(f"{k} = ?" for k in fields)
     values = list(fields.values()) + [ticket_id]
@@ -235,6 +315,75 @@ def update_ticket_fields(ticket_id: str, **fields: str) -> bool:
             values,
         )
     return cursor.rowcount > 0
+
+
+def get_ticket_by_id(ticket_id: str) -> sqlite3.Row | None:
+    """Fetch a single ticket row by ID using an indexed lookup (O(1) vs O(n))."""
+    init_database()
+    with get_connection() as conn:
+        return conn.execute(
+            "SELECT * FROM tickets WHERE ticket_id = ?", (ticket_id,)
+        ).fetchone()
+
+
+def get_tickets_by_status(statuses: list[str]) -> list[sqlite3.Row]:
+    """Fetch tickets matching any of the given statuses."""
+    init_database()
+    if not statuses:
+        return []
+    placeholders = ", ".join("?" for _ in statuses)
+    with get_connection() as conn:
+        return conn.execute(
+            f"SELECT * FROM tickets WHERE status IN ({placeholders}) ORDER BY processed_at ASC",
+            statuses,
+        ).fetchall()
+
+
+def get_tickets_paginated(
+    offset: int = 0,
+    limit: int = 50,
+    status: str | None = None,
+    assigned_to: str | None = None,
+) -> tuple[list[sqlite3.Row], int]:
+    """Return paginated tickets with optional filters. Returns (rows, total_count)."""
+    init_database()
+    conditions = []
+    params: list = []
+    if status:
+        conditions.append("status = ?")
+        params.append(status)
+    if assigned_to:
+        conditions.append("assigned_to = ?")
+        params.append(assigned_to)
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    with get_connection() as conn:
+        count_row = conn.execute(f"SELECT COUNT(*) AS cnt FROM tickets {where}", params).fetchone()
+        total = count_row["cnt"] if count_row else 0
+        rows = conn.execute(
+            f"SELECT * FROM tickets {where} ORDER BY processed_at DESC LIMIT ? OFFSET ?",
+            params + [limit, offset],
+        ).fetchall()
+    return rows, total
+
+
+def cleanup_stuck_tickets(max_age_minutes: int = 30) -> int:
+    """Reset tickets stuck in 'Processing' state for longer than max_age_minutes.
+
+    Returns the number of tickets cleaned up. Called at startup.
+    """
+    from datetime import datetime, timedelta
+
+    init_database()
+    cutoff = (datetime.now() - timedelta(minutes=max_age_minutes)).isoformat()
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "UPDATE tickets SET status = 'Open' WHERE status = 'Processing' AND processed_at < ?",
+            (cutoff,),
+        )
+    count = cursor.rowcount
+    if count > 0:
+        logger.warning("Cleaned up %d stuck 'Processing' tickets (older than %d min)", count, max_age_minutes)
+    return count
 
 
 def get_engineer_expertise() -> dict[str, list[str]]:
@@ -412,6 +561,55 @@ def get_feedback_by_category() -> list[dict]:
             "satisfaction_rate": round(helpful / total, 2) if total else 0.0,
         })
     return sorted(results, key=lambda x: x["total_feedback"], reverse=True)
+
+
+def get_stale_tickets(max_hours_since_update: float = 24.0) -> list[sqlite3.Row]:
+    """Return tickets that have had NO edits for `max_hours_since_update` hours.
+
+    Only considers tickets in active statuses (not already Completed/Escalated/HR).
+    Uses the `updated_at` column — if it's empty, falls back to `created_at` or `processed_at`.
+    """
+    from datetime import datetime, timedelta
+
+    init_database()
+    cutoff = (datetime.now() - timedelta(hours=max_hours_since_update)).isoformat()
+    active_statuses = ("Open", "Assigned", "WorkInProgress", "Processing")
+    placeholders = ", ".join("?" for _ in active_statuses)
+
+    with get_connection() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT * FROM tickets
+            WHERE status IN ({placeholders})
+              AND COALESCE(NULLIF(updated_at, ''), NULLIF(created_at, ''), processed_at) < ?
+            ORDER BY processed_at ASC
+            """,
+            list(active_statuses) + [cutoff],
+        ).fetchall()
+    return rows
+
+
+def backfill_timestamps() -> int:
+    """Backfill created_at and updated_at for tickets that don't have them.
+
+    Uses processed_at as the fallback. Called once at startup.
+    Returns the number of tickets backfilled.
+    """
+    init_database()
+    with get_connection() as conn:
+        cursor = conn.execute(
+            """
+            UPDATE tickets
+            SET created_at = processed_at,
+                updated_at = processed_at
+            WHERE (created_at IS NULL OR created_at = '')
+               AND processed_at IS NOT NULL AND processed_at != ''
+            """
+        )
+    count = cursor.rowcount
+    if count > 0:
+        logger.info("Backfilled created_at/updated_at for %d existing tickets", count)
+    return count
 
 
 def clear_all_data() -> None:

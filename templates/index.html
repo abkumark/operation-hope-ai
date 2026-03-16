@@ -4,9 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>HOPE AI | Support Intelligence</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="apple-touch-icon" href="/static/favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="/static/css/style.css?v=2.1">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -33,6 +35,22 @@
           <p>Describe your issue and we will assign it to the right team. You will receive a ticket ID and email updates on progress.</p>
         </div>
 
+        <!-- Language Toggle (top of form) -->
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:linear-gradient(135deg,rgba(0,62,126,.04),rgba(201,169,97,.06));border:1px solid rgba(0,62,126,.12);border-radius:10px;padding:10px 16px;margin-bottom:20px;">
+          <div id="lang-toggle" style="display:inline-flex;border-radius:8px;overflow:hidden;border:2px solid #003E7E;flex-shrink:0;">
+            <button type="button" id="lang-btn-en" onclick="setLanguage('en')"
+              style="padding:6px 16px;font-size:.82rem;font-weight:700;font-family:inherit;border:none;cursor:pointer;transition:all .2s;background:#003E7E;color:#fff;letter-spacing:.03em;">
+              EN
+            </button>
+            <button type="button" id="lang-btn-es" onclick="setLanguage('es')"
+              style="padding:6px 16px;font-size:.82rem;font-weight:700;font-family:inherit;border:none;cursor:pointer;transition:all .2s;background:#fff;color:#003E7E;letter-spacing:.03em;">
+              ES
+            </button>
+          </div>
+          <span id="pub-lang-hint" style="font-size:.78rem;color:#64748b;">You can describe your issue in English or Spanish.</span>
+          <input type="hidden" id="pub-language" value="en">
+        </div>
+
         <div class="sample-chips" id="sample-chips"></div>
 
         <form id="public-ticket-form" onsubmit="submitPublicTicket(event)">
@@ -44,6 +62,12 @@
             <div class="form-group">
               <label for="pub-email">Email Address</label>
               <input id="pub-email" type="email" class="form-control" placeholder="you@example.com" required>
+            </div>
+          </div>
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="pub-phone">Phone Number <span style="color:var(--hope-text-muted);font-weight:400">(optional)</span></label>
+              <input id="pub-phone" type="tel" class="form-control" placeholder="(555) 123-4567">
             </div>
           </div>
           <div class="form-group">
@@ -250,8 +274,8 @@
                 <option value="Processing">Processing</option>
                 <option value="Open">Open</option>
                 <option value="Assigned">Assigned</option>
-                <option value="PendingApproval">Pending Approval</option>
-                <option value="Approved">Approved</option>
+                <option value="WorkInProgress">Work In Progress</option>
+                <option value="Completed">Completed</option>
               </select>
             </div>
             <div class="table-wrap">
@@ -261,7 +285,7 @@
                     <th>ID</th>
                     <th>Subject</th>
                     <th>Status</th>
-                    <th>Assigned To</th>
+                    <th>Queue Team</th>
                     <th>Category</th>
                     <th>Confidence</th>
                     <th>Actions</th>
@@ -307,14 +331,24 @@
                   <label for="mgmt-resolution-text">Resolution (editable)</label>
                   <textarea id="mgmt-resolution-text" class="form-control" style="min-height:200px"></textarea>
                 </div>
+                <div id="mgmt-translate-container" style="display:none;margin-bottom:12px;">
+                  <button type="button" class="translate-toggle-btn" id="btn-mgmt-translate" onclick="translateMgmtResolution()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/></svg>
+                    Translate to English
+                  </button>
+                  <div id="mgmt-translation-result" class="translation-result-box">
+                    <div class="translation-label">English Translation</div>
+                    <div class="translation-text" id="mgmt-translated-text"></div>
+                  </div>
+                </div>
 
                 <div class="mgmt-divider"></div>
-                <h4>Route to Engineer</h4>
+                <h4>Assign to Queue Member</h4>
                 <div class="mgmt-assign-row">
                   <select id="mgmt-assign-select" class="form-control form-control-sm">
-                    <option value="">-- Select an engineer --</option>
+                    <option value="">-- Select a queue member --</option>
                   </select>
-                  <button type="button" class="btn btn-primary btn-sm" onclick="routeToEngineer()">Route</button>
+                  <button type="button" class="btn btn-primary btn-sm" onclick="routeToEngineer()">Assign</button>
                 </div>
                 <div id="mgmt-assigned-info" class="mgmt-assigned-info" style="display:none"></div>
 
@@ -386,6 +420,16 @@
               <div class="mgmt-resolution-pane">
                 <h4>AI Suggestion (Reference)</h4>
                 <div class="mq-ai-suggestion" id="mq-ai-suggestion"></div>
+                <div id="mq-translate-container" style="display:none;margin-top:8px;margin-bottom:8px;">
+                  <button type="button" class="translate-toggle-btn" id="btn-mq-translate" onclick="translateMqResolution()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/></svg>
+                    Translate to English
+                  </button>
+                  <div id="mq-translation-result" class="translation-result-box">
+                    <div class="translation-label">English Translation</div>
+                    <div class="translation-text" id="mq-translated-text"></div>
+                  </div>
+                </div>
                 <div class="form-group" style="margin-top:16px">
                   <label for="mq-resolution-text">Your Resolution</label>
                   <textarea id="mq-resolution-text" class="form-control" style="min-height:180px" placeholder="Type your resolution here..."></textarea>
@@ -416,8 +460,8 @@
                 <option value="Processing">Processing</option>
                 <option value="Open">Open</option>
                 <option value="Assigned">Assigned</option>
-                <option value="PendingApproval">Pending Approval</option>
-                <option value="Approved">Approved</option>
+                <option value="WorkInProgress">Work In Progress</option>
+                <option value="Completed">Completed</option>
               </select>
             </div>
             <div class="table-wrap" style="max-height:calc(100vh - 260px);overflow-y:auto">
@@ -451,6 +495,7 @@
                 <div class="exp-meta-line">
                   <span>by <strong id="exp-submitter"></strong></span>
                   <span id="exp-timestamp"></span>
+                  <span id="exp-duration"></span>
                   <span id="exp-proc-time"></span>
                 </div>
               </div>
@@ -492,6 +537,16 @@
               <!-- Tab: Resolution -->
               <div class="exp-tab-content" id="exp-tab-resolution">
                 <div class="exp-resolution-box" id="exp-ai-resolution"></div>
+                <div id="exp-translate-container" style="display:none;margin-top:8px;">
+                  <button type="button" class="translate-toggle-btn" id="btn-translate-resolution" onclick="translateResolution()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/></svg>
+                    Translate to English
+                  </button>
+                  <div id="exp-translation-result" class="translation-result-box">
+                    <div class="translation-label">English Translation</div>
+                    <div class="translation-text" id="exp-translated-text"></div>
+                  </div>
+                </div>
 
                 <div class="exp-sub-heading" style="margin-top:14px">Historical Matches</div>
                 <div id="exp-similar-tickets" class="exp-similar-list"></div>
@@ -526,6 +581,10 @@
                     <span class="exp-cell-label">Queue</span>
                     <span class="exp-cell-value" id="exp-routing-queue"></span>
                   </div>
+                </div>
+                <div class="exp-summary-row" style="margin-top:10px">
+                  <span class="exp-cell-label">Queue Team Members</span>
+                  <div class="exp-cell-value" id="exp-queue-members" style="display:flex;gap:6px;flex-wrap:wrap"></div>
                 </div>
                 <div class="exp-summary-row" id="exp-routing-reason-row">
                   <span class="exp-cell-label">Routing Reason</span>
@@ -824,28 +883,26 @@
         </div>
 
         <div class="card" style="grid-column:span 2">
-          <div class="card-header">Queue Routing Map &amp; Engineer Expertise
-            <span class="header-meta">Click engineer names to toggle expertise per category</span>
+          <div class="card-header">Queue Routing Map &amp; Team Members
+            <span class="header-meta">Each queue has a dedicated mailer list of 2–3 team members</span>
           </div>
           <div class="card-body table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>Category</th>
                   <th>Queue</th>
                   <th>AI-Draft</th>
                   <th>Type</th>
-                  <th>Assigned Engineers</th>
+                  <th>Queue Team (Mailer List)</th>
                 </tr>
               </thead>
               <tbody id="config-routing-tbody">
                 {% for cat in categories %}
                 <tr>
-                  <td><strong>{{ cat.name }}</strong></td>
-                  <td>{{ cat.queue }}</td>
+                  <td><strong>{{ cat.name }}</strong><br><span style="font-size:.75rem;color:var(--hope-text-muted)">{{ cat.queue }}</span></td>
                   <td>{{ "Yes" if cat.auto_resolvable else "No" }}</td>
                   <td><span class="badge badge-navy">{{ cat.ticket_type }}</span></td>
-                  <td class="config-eng-cell" data-category="{{ cat.id }}">
+                  <td class="config-eng-cell" data-category="{{ cat.id }}" data-queue="{{ cat.queue }}">
                     <div class="config-eng-tags" id="eng-tags-{{ cat.id }}"></div>
                   </td>
                 </tr>
@@ -861,6 +918,6 @@
 
 </div><!-- end app-shell -->
 <div id="toast-container" class="toast-container"></div>
-<script src="/static/js/app.js"></script>
+<script src="/static/js/app.js?v=2.1"></script>
 </body>
 </html>

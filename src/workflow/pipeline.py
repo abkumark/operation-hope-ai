@@ -13,6 +13,7 @@ from src.core.classifier import ClassificationResult, classify_ticket
 from src.core.resolution_engine import find_similar_tickets, generate_resolution
 from src.core.responder import TicketResponse, generate_ticket_response
 from src.core.router import RoutingAction, RoutingDecision, route_ticket
+from src.knowledge.vectorstore import upsert_ticket_embedding
 from src.storage.sqlite_db import (
     get_connection,
     get_expertise_for_category,
@@ -37,6 +38,7 @@ class PipelineResult:
     response: TicketResponse | None
     approval: ApprovalRecord | None
     submitter_email: str = ""
+    phone_number: str = ""
     status: str = "Open"
     ai_resolution: str = ""
     similar_ticket_ids: list[str] = field(default_factory=list)
@@ -115,34 +117,79 @@ def _deserialize_response(payload: str | None) -> TicketResponse | None:
 
 
 def _save_pipeline_result(result: PipelineResult) -> None:
+    """Save pipeline result. Uses UPDATE if the ticket exists (preserving phone_number
+    from the placeholder), otherwise INSERT."""
     init_database()
     with get_connection() as connection:
-        connection.execute(
-            """
-            INSERT OR REPLACE INTO tickets (
-                ticket_id, subject, description, submitter, submitter_email,
-                status, ai_resolution, similar_ticket_ids, assigned_to,
-                classification_json, routing_json, response_json,
-                processed_at, processing_time_ms
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                result.ticket_id,
-                result.subject,
-                result.description,
-                result.submitter,
-                result.submitter_email,
-                result.status,
-                result.ai_resolution,
-                json.dumps(result.similar_ticket_ids),
-                result.assigned_to,
-                _serialize_classification(result.classification),
-                _serialize_routing(result.routing),
-                _serialize_response(result.response),
-                result.processed_at.isoformat(),
-                result.processing_time_ms,
-            ),
-        )
+        # Try UPDATE first to preserve fields set by create_placeholder_ticket
+        existing = connection.execute(
+            "SELECT ticket_id, phone_number FROM tickets WHERE ticket_id = ?",
+            (result.ticket_id,),
+        ).fetchone()
+
+        now_iso = datetime.now().isoformat()
+        if existing:
+            # Preserve phone_number from placeholder if pipeline didn't provide one
+            phone = result.phone_number or (existing["phone_number"] if existing["phone_number"] else "")
+            connection.execute(
+                """
+                UPDATE tickets SET
+                    subject = ?, description = ?, submitter = ?, submitter_email = ?,
+                    phone_number = ?, status = ?, ai_resolution = ?, similar_ticket_ids = ?,
+                    assigned_to = ?, classification_json = ?, routing_json = ?,
+                    response_json = ?, processed_at = ?, processing_time_ms = ?,
+                    updated_at = ?
+                WHERE ticket_id = ?
+                """,
+                (
+                    result.subject,
+                    result.description,
+                    result.submitter,
+                    result.submitter_email,
+                    phone,
+                    result.status,
+                    result.ai_resolution,
+                    json.dumps(result.similar_ticket_ids),
+                    result.assigned_to,
+                    _serialize_classification(result.classification),
+                    _serialize_routing(result.routing),
+                    _serialize_response(result.response),
+                    result.processed_at.isoformat(),
+                    result.processing_time_ms,
+                    now_iso,
+                    result.ticket_id,
+                ),
+            )
+        else:
+            connection.execute(
+                """
+                INSERT INTO tickets (
+                    ticket_id, subject, description, submitter, submitter_email, phone_number,
+                    status, ai_resolution, similar_ticket_ids, assigned_to,
+                    classification_json, routing_json, response_json,
+                    processed_at, processing_time_ms, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    result.ticket_id,
+                    result.subject,
+                    result.description,
+                    result.submitter,
+                    result.submitter_email,
+                    result.phone_number,
+                    result.status,
+                    result.ai_resolution,
+                    json.dumps(result.similar_ticket_ids),
+                    result.assigned_to,
+                    _serialize_classification(result.classification),
+                    _serialize_routing(result.routing),
+                    _serialize_response(result.response),
+                    result.processed_at.isoformat(),
+                    result.processing_time_ms,
+                    now_iso,
+                    now_iso,
+                ),
+            )
 
 
 def _load_pipeline_result(row) -> PipelineResult:
@@ -166,6 +213,7 @@ def _load_pipeline_result(row) -> PipelineResult:
         response=response,
         approval=approval,
         submitter_email=row["submitter_email"] if "submitter_email" in cols else "",
+        phone_number=row["phone_number"] if "phone_number" in cols else "",
         status=row["status"] if "status" in cols else "Open",
         ai_resolution=row["ai_resolution"] if "ai_resolution" in cols else "",
         similar_ticket_ids=similar_ids,
@@ -187,7 +235,7 @@ def _auto_assign_engineer(ticket_id: str, category_id: str) -> str:
     with get_connection() as conn:
         rows = conn.execute(
             "SELECT assigned_to, COUNT(*) AS cnt FROM tickets "
-            "WHERE assigned_to != '' AND status IN ('Open','Assigned','PendingApproval') "
+            "WHERE assigned_to != '' AND status IN ('Open','Assigned','WorkInProgress') "
             "GROUP BY assigned_to"
         ).fetchall()
     load = {r["assigned_to"]: r["cnt"] for r in rows}
@@ -214,8 +262,15 @@ def process_ticket(
     submitter: str = "Unknown",
     submitter_email: str = "",
     ticket_id: str | None = None,
+    phone_number: str = "",
+    preferred_language: str = "",
 ) -> PipelineResult:
-    """Process a single ticket through the full AI pipeline."""
+    """Process a single ticket through the full AI pipeline.
+
+    Args:
+        preferred_language: User's selected language preference (e.g. "es").
+            When set, overrides auto-detected language for response generation.
+    """
     init_database()
     start_time = datetime.now()
 
@@ -223,6 +278,12 @@ def process_ticket(
         ticket_id = next_ticket_id()
 
     classification = classify_ticket(subject, description, submitter)
+
+    # Honor the user's preferred language selection over auto-detection.
+    # This handles the case where a bilingual user selects "Español" but
+    # writes their ticket in English — they still want a Spanish response.
+    if preferred_language and preferred_language in ("en", "es"):
+        classification.language = preferred_language
     routing = route_ticket(classification)
 
     # Check escalation rules for low-confidence or high-urgency tickets that the
@@ -262,18 +323,26 @@ def process_ticket(
             queue=routing.queue,
         )
 
-    similar = find_similar_tickets(subject, description, exclude_ticket_id=ticket_id, top_k=3)
-    resolution = generate_resolution(
-        subject=subject,
-        description=description,
-        category=classification.category_id,
-        similar_tickets=similar,
-    )
+    # Skip similar-ticket search and LLM resolution for HR/escalated tickets
+    # to avoid wasting LLM tokens on tickets that won't use the resolution.
+    similar: list = []
+    resolution_text = ""
+    resolution_refs: list[str] = []
+    if routing.action not in (RoutingAction.HR_EXCLUDED, RoutingAction.ESCALATE):
+        similar = find_similar_tickets(subject, description, exclude_ticket_id=ticket_id, top_k=3)
+        resolution = generate_resolution(
+            subject=subject,
+            description=description,
+            category=classification.category_id,
+            similar_tickets=similar,
+        )
+        resolution_text = resolution.proposed_resolution
+        resolution_refs = resolution.similar_ticket_ids
 
     processing_time = (datetime.now() - start_time).total_seconds() * 1000
 
     initial_status = (
-        "PendingApproval"
+        "WorkInProgress"
         if response and (response.requires_approval or routing.action == RoutingAction.INSTANT_RESOLVE)
         else "Open"
     )
@@ -288,13 +357,26 @@ def process_ticket(
         response=response,
         approval=approval,
         submitter_email=submitter_email,
+        phone_number=phone_number,
         status=initial_status,
-        ai_resolution=resolution.proposed_resolution,
-        similar_ticket_ids=resolution.similar_ticket_ids,
+        ai_resolution=resolution_text,
+        similar_ticket_ids=resolution_refs,
         processing_time_ms=processing_time,
     )
 
     _save_pipeline_result(result)
+
+    # Index ticket embedding for future similar-ticket searches
+    try:
+        upsert_ticket_embedding(
+            ticket_id=ticket_id,
+            subject=subject,
+            description=description,
+            status=result.status,
+            ai_resolution=resolution_text[:500] if resolution_text else "",
+        )
+    except Exception:
+        logger.debug("Failed to index ticket embedding for %s", ticket_id)
 
     if routing.action in (RoutingAction.ROUTE_TO_HUMAN, RoutingAction.SUGGEST_REVIEW):
         assigned = _auto_assign_engineer(ticket_id, classification.category_id)

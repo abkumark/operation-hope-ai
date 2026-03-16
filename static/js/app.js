@@ -5,6 +5,7 @@ let selectedMgmtTicketId = null;
 let selectedMyQueueTicketId = null;
 let currentUser = null;
 let cachedEngineers = [];
+let cachedQueues = {};
 
 /* ─── Landing Page Tabs ─── */
 function switchLandingTab(tab) {
@@ -16,12 +17,11 @@ function switchLandingTab(tab) {
 
 /* ─── Public Ticket Submission ─── */
 const SAMPLES = [
-  { label: 'Password Reset', subject: 'Cannot reset my password', description: 'I forgot my password for the client portal. I tried the reset link but it says my account does not exist.', name: 'John Davis' },
-  { label: 'Course Video Issue', subject: 'Video not playing', description: 'The course video in Before You Buy module is stuck loading. I tried Chrome and Safari.', name: 'Maria Garcia' },
-  { label: 'HUD Certificate', subject: 'Need HUD Certification', description: 'I completed all courses for homeownership. How do I get my HUD certificate?', name: 'James Wilson' },
-  { label: 'Delta SSO', subject: 'Delta login issue', description: 'I am a Delta employee trying to sign in to Operation HOPE portal but SSO is not working.', name: 'Lisa Chen' },
-  { label: 'Coach Change', subject: 'Need a new coach', description: 'I would like to be reassigned to a different coach. My current coach has not responded in weeks.', name: 'Robert Brown' },
-  { label: 'Spanish Ticket', subject: 'No puedo iniciar sesión', description: 'He intentado varias veces pero no puedo acceder al portal. Mi correo es correcto.', name: 'Carlos Mendez' },
+  { label: 'Password Reset', subject: 'Cannot reset my password', description: 'I forgot my password for the client portal. I tried the reset link but it says my account does not exist.', name: 'John Davis', lang: 'en' },
+  { label: 'Course Video Issue', subject: 'Video not playing', description: 'The course video in Before You Buy module is stuck loading. I tried Chrome and Safari.', name: 'Maria Garcia', lang: 'en' },
+  { label: 'HUD Certificate', subject: 'Need HUD Certification', description: 'I completed all courses for homeownership. How do I get my HUD certificate?', name: 'James Wilson', lang: 'en' },
+  { label: 'Delta SSO', subject: 'Delta login issue', description: 'I am a Delta employee trying to sign in to Operation HOPE portal but SSO is not working.', name: 'Lisa Chen', lang: 'en' },
+  { label: 'Coach Change', subject: 'Need a new coach', description: 'I would like to be reassigned to a different coach. My current coach has not responded in weeks.', name: 'Robert Brown', lang: 'en' },
 ];
 
 function initSampleChips() {
@@ -32,17 +32,104 @@ function initSampleChips() {
 
 function fillPublicSample(idx) {
   const s = SAMPLES[idx];
-  document.getElementById('pub-name').value = s.name;
   document.getElementById('pub-subject').value = s.subject;
   document.getElementById('pub-description').value = s.description;
+
+  // Auto-switch language button to match sample
+  const targetLang = s.lang || 'en';
+  setLanguage(targetLang);
+}
+
+const FORM_LABELS = {
+  en: {
+    heading: 'Submit a Support Request',
+    intro: 'Describe your issue and we will assign it to the right team. You will receive a ticket ID and email updates on progress.',
+    name: 'Your Name',
+    namePlaceholder: 'Full name',
+    email: 'Email Address',
+    language: 'Preferred Language',
+    langHint: 'You can describe your issue in English or Spanish.',
+    subject: 'Subject',
+    subjectPlaceholder: 'Brief summary of the issue',
+    description: 'Description',
+    descPlaceholder: 'Describe your issue in detail...',
+    submit: 'Submit Request',
+    submitting: 'Submitting...',
+    successMsg: 'Ticket submitted successfully!',
+  },
+  es: {
+    heading: 'Enviar una Solicitud de Soporte',
+    intro: 'Describa su problema y lo asignaremos al equipo adecuado. Recibirá un número de ticket y actualizaciones por correo electrónico.',
+    name: 'Su Nombre',
+    namePlaceholder: 'Nombre completo',
+    email: 'Correo Electrónico',
+    language: 'Idioma Preferido',
+    langHint: 'Puede describir su problema en inglés o español.',
+    subject: 'Asunto',
+    subjectPlaceholder: 'Resumen breve del problema',
+    description: 'Descripción',
+    descPlaceholder: 'Describa su problema en detalle...',
+    submit: 'Enviar Solicitud',
+    submitting: 'Enviando...',
+    successMsg: '¡Solicitud enviada exitosamente!',
+  },
+};
+
+function switchFormLanguage(lang) {
+  const L = FORM_LABELS[lang] || FORM_LABELS.en;
+  const heading = document.querySelector('#tab-help .tab-intro h2');
+  const intro = document.querySelector('#tab-help .tab-intro p');
+  if (heading) heading.textContent = L.heading;
+  if (intro) intro.textContent = L.intro;
+
+  const setLabel = (inputId, text) => {
+    const label = document.querySelector(`label[for="${inputId}"]`);
+    if (label) label.textContent = text;
+  };
+  setLabel('pub-name', L.name);
+  setLabel('pub-email', L.email);
+  setLabel('pub-subject', L.subject);
+  setLabel('pub-description', L.description);
+
+  document.getElementById('pub-name').placeholder = L.namePlaceholder;
+  document.getElementById('pub-subject').placeholder = L.subjectPlaceholder;
+  document.getElementById('pub-description').placeholder = L.descPlaceholder;
+  document.getElementById('btn-submit-ticket').textContent = L.submit;
+
+  const hint = document.getElementById('pub-lang-hint');
+  if (hint) hint.textContent = L.langHint;
+}
+
+/* ─── EN/ES Segmented Button Toggle ─── */
+function setLanguage(lang) {
+  const hiddenInput = document.getElementById('pub-language');
+  hiddenInput.value = lang;
+
+  const enBtn = document.getElementById('lang-btn-en');
+  const esBtn = document.getElementById('lang-btn-es');
+  if (lang === 'en') {
+    enBtn.style.background = '#003E7E';
+    enBtn.style.color = '#fff';
+    esBtn.style.background = '#fff';
+    esBtn.style.color = '#003E7E';
+  } else {
+    esBtn.style.background = '#c60b1e';
+    esBtn.style.color = '#fff';
+    enBtn.style.background = '#fff';
+    enBtn.style.color = '#003E7E';
+  }
+  switchFormLanguage(lang);
 }
 
 async function submitPublicTicket(e) {
   e.preventDefault();
   const name = document.getElementById('pub-name').value.trim();
   const email = document.getElementById('pub-email').value.trim();
+  const phone = (document.getElementById('pub-phone').value || '').trim();
   const subject = document.getElementById('pub-subject').value.trim();
   const description = document.getElementById('pub-description').value.trim();
+  const language = document.getElementById('pub-language').value || 'en';
+  const L = FORM_LABELS[language] || FORM_LABELS.en;
 
   if (!name || !email || !subject || !description) {
     showToast('Please fill in all fields.', 'error');
@@ -51,13 +138,13 @@ async function submitPublicTicket(e) {
 
   const btn = document.getElementById('btn-submit-ticket');
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> Submitting...';
+  btn.innerHTML = `<span class="spinner"></span> ${L.submitting}`;
 
   try {
     const res = await fetch(`${API}/tickets/submit`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ subject, description, submitter_name: name, submitter_email: email }),
+      body: JSON.stringify({ subject, description, submitter_name: name, submitter_email: email, phone_number: phone, language }),
     });
     if (!res.ok) {
       const err = await res.json();
@@ -72,12 +159,12 @@ async function submitPublicTicket(e) {
     document.getElementById('public-ticket-form').style.display = 'none';
     document.querySelector('#tab-help .sample-chips').style.display = 'none';
     document.getElementById('public-ticket-success').style.display = 'block';
-    showToast('Ticket submitted successfully!', 'success');
+    showToast(L.successMsg, 'success');
   } catch (err) {
     showToast(err.message, 'error');
   } finally {
     btn.disabled = false;
-    btn.innerHTML = 'Submit Request';
+    btn.innerHTML = L.submit;
   }
 }
 
@@ -88,6 +175,9 @@ function resetPublicForm() {
   if (chips) chips.style.display = 'flex';
   document.getElementById('public-ticket-success').style.display = 'none';
   document.getElementById('instant-resolution-box').style.display = 'none';
+
+  // Reset language back to English
+  setLanguage('en');
 }
 
 let _feedbackTicketId = '';
@@ -104,7 +194,7 @@ async function lookupTicketStatus(e) {
   box.innerHTML = '<span style="font-size:.82rem;color:var(--hope-text-muted)">Looking up...</span>';
   try {
     const d = await apiFetch(`/tickets/status/${encodeURIComponent(tid)}?email=${encodeURIComponent(em)}`);
-    const statusColor = d.status === 'Approved' ? '#059669' : d.status === 'Processing' ? '#6366f1' : d.status === 'Open' ? '#d97706' : '#003E7E';
+    const statusColor = d.status === 'Completed' ? '#059669' : d.status === 'Processing' ? '#6366f1' : d.status === 'Open' ? '#d97706' : '#003E7E';
     const esc = (s) => s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') : '';
     box.innerHTML = `
       <div style="background:var(--hope-bg);border:1px solid var(--hope-border);border-radius:10px;padding:16px;text-align:left">
@@ -189,12 +279,25 @@ function getStoredUser() {
   } catch { return null; }
 }
 
-function storeUser(user) {
+function getAuthToken() {
+  return sessionStorage.getItem('hope_token') || '';
+}
+
+function authHeaders() {
+  const token = getAuthToken();
+  const h = { 'Content-Type': 'application/json' };
+  if (token) h['Authorization'] = `Bearer ${token}`;
+  return h;
+}
+
+function storeUser(user, token) {
   sessionStorage.setItem('hope_user', JSON.stringify(user));
+  if (token) sessionStorage.setItem('hope_token', token);
 }
 
 function clearStoredUser() {
   sessionStorage.removeItem('hope_user');
+  sessionStorage.removeItem('hope_token');
 }
 
 async function handleLogin(e) {
@@ -228,7 +331,7 @@ async function handleLogin(e) {
 
     const user = await res.json();
     currentUser = user;
-    storeUser(user);
+    storeUser(user, user.access_token);
     showApp();
   } catch (err) {
     errorEl.textContent = err.message;
@@ -369,10 +472,17 @@ function showToast(msg, type = 'info') {
 
 async function apiFetch(path, opts = {}) {
   try {
+    const headers = { ...authHeaders(), ...(opts.headers || {}) };
     const res = await fetch(`${API}${path}`, {
-      headers: { 'Content-Type': 'application/json' },
       ...opts,
+      headers,
     });
+    if (res.status === 401) {
+      // Token expired or invalid — force re-login
+      handleLogout();
+      showToast('Session expired. Please log in again.', 'error');
+      throw new Error('Session expired');
+    }
     if (!res.ok) throw new Error(`API error: ${res.status}`);
     return await res.json();
   } catch (e) {
@@ -534,11 +644,21 @@ async function rejectSelectedApproval() {
 
 /* ─── Ticket Management ─── */
 function statusBadge(status) {
-  if (status === 'Approved') return '<span class="badge badge-status-approved">Approved</span>';
+  if (status === 'Completed') return '<span class="badge badge-status-approved">Completed</span>';
   if (status === 'Assigned') return '<span class="badge badge-status-assigned">Assigned</span>';
-  if (status === 'PendingApproval') return '<span class="badge badge-status-pendingapproval">Pending Approval</span>';
+  if (status === 'WorkInProgress') return '<span class="badge badge-status-pendingapproval">Work In Progress</span>';
   if (status === 'Processing') return '<span class="badge badge-navy">Processing</span>';
+  if (status === 'Escalated') return '<span class="badge badge-escalate">Escalated</span>';
   return '<span class="badge badge-status-open">Open</span>';
+}
+
+function renderQueueMembers(members, assignedTo) {
+  if (!members || members.length === 0) return '<span style="color:var(--hope-text-muted)">—</span>';
+  return members.map((m) => {
+    const isAssigned = assignedTo === m.username;
+    const cls = isAssigned ? 'badge badge-expert' : 'badge badge-queue-member';
+    return `<span class="${cls}" title="${m.username}">${m.display_name}</span>`;
+  }).join(' ');
 }
 
 async function loadManagement() {
@@ -550,7 +670,7 @@ async function loadManagement() {
     const tbody = document.getElementById('mgmt-tbody');
     document.getElementById('mgmt-count').textContent = `${tickets.length} tickets`;
     if (tickets.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><p>No tickets to display.</p></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><p>No tickets to display.</p></td></tr>';
       document.getElementById('mgmt-empty').style.display = 'block';
       document.getElementById('mgmt-editor').style.display = 'none';
       return;
@@ -560,7 +680,7 @@ async function loadManagement() {
         <td><strong>${t.ticket_id}</strong></td>
         <td title="${(t.subject || '').replace(/"/g, '&quot;')}">${(t.subject || '').substring(0, 35)}${(t.subject || '').length > 35 ? '...' : ''}</td>
         <td>${statusBadge(t.status)}</td>
-        <td>${t.assigned_to ? `<span class="badge badge-navy">${t.assigned_to}</span>` : '<span style="color:var(--hope-text-muted)">—</span>'}</td>
+        <td>${renderQueueMembers(t.queue_members, t.assigned_to)}</td>
         <td>${t.category_name || t.category_id}</td>
         <td>${confBar(t.confidence)}</td>
         <td>
@@ -581,9 +701,9 @@ async function selectMgmtTicket(ticketId) {
     const statusEl = document.getElementById('mgmt-r-status');
     statusEl.textContent = detail.status || 'Open';
     const statusClassMap = {
-      Approved: 'badge badge-status-approved',
+      Completed: 'badge badge-status-approved',
       Assigned: 'badge badge-status-assigned',
-      PendingApproval: 'badge badge-status-pendingapproval',
+      WorkInProgress: 'badge badge-status-pendingapproval',
     };
     statusEl.className = statusClassMap[detail.status] || 'badge badge-status-open';
     document.getElementById('mgmt-r-category').textContent = detail.classification?.category_name || detail.classification?.category_id || '';
@@ -591,6 +711,18 @@ async function selectMgmtTicket(ticketId) {
     document.getElementById('mgmt-r-description').textContent = detail.description;
     document.getElementById('mgmt-r-submitter').textContent = detail.submitter || '';
     document.getElementById('mgmt-resolution-text').value = detail.ai_resolution || '';
+
+    // Show translate button if ticket is in Spanish
+    const mgmtTranslateContainer = document.getElementById('mgmt-translate-container');
+    const mgmtTranslationResult = document.getElementById('mgmt-translation-result');
+    if (mgmtTranslateContainer) {
+      const ticketLang = (detail.classification?.language || 'en').toLowerCase();
+      const hasResolution = !!detail.ai_resolution;
+      mgmtTranslateContainer.style.display = (ticketLang === 'es' && hasResolution) ? '' : 'none';
+      mgmtTranslationResult.style.display = 'none';
+      const btn = document.getElementById('btn-mgmt-translate');
+      if (btn) { btn.disabled = false; btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/></svg> Translate to English'; }
+    }
 
     const similarRow = document.getElementById('mgmt-similar-badges');
     const ids = detail.similar_ticket_ids || [];
@@ -601,7 +733,9 @@ async function selectMgmtTicket(ticketId) {
       similarRow.innerHTML = '<span class="mgmt-field-label" style="margin:0">No similar tickets found</span>';
     }
 
-    await populateEngineerDropdown();
+    const queueMembers = detail.routing?.queue_members || [];
+    const queueName = detail.routing?.queue || '';
+    await populateEngineerDropdown(queueMembers, queueName);
     const assignSelect = document.getElementById('mgmt-assign-select');
     assignSelect.value = detail.assigned_to || '';
     const assignedInfo = document.getElementById('mgmt-assigned-info');
@@ -616,7 +750,7 @@ async function selectMgmtTicket(ticketId) {
   } catch {}
 }
 
-async function populateEngineerDropdown() {
+async function populateEngineerDropdown(queueMembers, queueName) {
   if (cachedEngineers.length === 0) {
     try {
       const data = await apiFetch('/users/engineers');
@@ -624,8 +758,29 @@ async function populateEngineerDropdown() {
     } catch { return; }
   }
   const select = document.getElementById('mgmt-assign-select');
-  select.innerHTML = '<option value="">-- Select an engineer --</option>' +
-    cachedEngineers.map((e) => `<option value="${e.username}">${e.display_name} (${e.username})</option>`).join('');
+  const memberUsernames = new Set((queueMembers || []).map((m) => m.username));
+
+  let html = '<option value="">-- Select an engineer --</option>';
+  if (queueMembers && queueMembers.length > 0) {
+    html += `<optgroup label="${queueName || 'Queue'} Team">`;
+    html += queueMembers.map((m) =>
+      `<option value="${m.username}">${m.display_name} (${m.username})</option>`
+    ).join('');
+    html += '</optgroup>';
+    const others = cachedEngineers.filter((e) => !memberUsernames.has(e.username));
+    if (others.length > 0) {
+      html += '<optgroup label="Other Engineers">';
+      html += others.map((e) =>
+        `<option value="${e.username}">${e.display_name} (${e.username})</option>`
+      ).join('');
+      html += '</optgroup>';
+    }
+  } else {
+    html += cachedEngineers.map((e) =>
+      `<option value="${e.username}">${e.display_name} (${e.username})</option>`
+    ).join('');
+  }
+  select.innerHTML = html;
 }
 
 async function routeToEngineer() {
@@ -734,9 +889,9 @@ async function selectMyQueueTicket(ticketId) {
     const statusEl = document.getElementById('mq-r-status');
     statusEl.textContent = detail.status || 'Assigned';
     const statusClassMap = {
-      Approved: 'badge badge-status-approved',
+      Completed: 'badge badge-status-approved',
       Assigned: 'badge badge-status-assigned',
-      PendingApproval: 'badge badge-status-pendingapproval',
+      WorkInProgress: 'badge badge-status-pendingapproval',
     };
     statusEl.className = statusClassMap[detail.status] || 'badge badge-status-open';
     document.getElementById('mq-r-category').textContent = detail.classification?.category_name || detail.classification?.category_id || '';
@@ -745,6 +900,19 @@ async function selectMyQueueTicket(ticketId) {
     document.getElementById('mq-r-submitter').textContent = detail.submitter || '';
     document.getElementById('mq-ai-suggestion').textContent = detail.ai_resolution || 'No AI suggestion available.';
     document.getElementById('mq-resolution-text').value = '';
+
+    // Show translate button if ticket is in Spanish
+    const mqTranslateContainer = document.getElementById('mq-translate-container');
+    const mqTranslationResult = document.getElementById('mq-translation-result');
+    if (mqTranslateContainer) {
+      const ticketLang = (detail.classification?.language || 'en').toLowerCase();
+      const hasResolution = !!detail.ai_resolution;
+      mqTranslateContainer.style.display = (ticketLang === 'es' && hasResolution) ? '' : 'none';
+      mqTranslationResult.style.display = 'none';
+      const btn = document.getElementById('btn-mq-translate');
+      if (btn) { btn.disabled = false; btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/></svg> Translate to English'; }
+    }
+
     loadMyQueue();
   } catch {}
 }
@@ -850,6 +1018,31 @@ async function selectExplorerTicket(ticketId) {
     document.getElementById('exp-submitter').textContent = d.submitter || 'Unknown';
     const ts = d.processed_at ? new Date(d.processed_at).toLocaleString() : '';
     document.getElementById('exp-timestamp').textContent = ts || '';
+
+    // Calculate and display ticket age / open duration
+    const durationEl = document.getElementById('exp-duration');
+    if (durationEl && d.processed_at) {
+      const created = new Date(d.processed_at);
+      const now = new Date();
+      const diffMs = now - created;
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMins / 60);
+      const diffDays = Math.floor(diffHours / 24);
+      let durationStr;
+      if (diffDays > 0) {
+        const remHours = diffHours % 24;
+        durationStr = `${diffDays}d ${remHours}h`;
+      } else if (diffHours > 0) {
+        const remMins = diffMins % 60;
+        durationStr = `${diffHours}h ${remMins}m`;
+      } else {
+        durationStr = `${diffMins}m`;
+      }
+      const isCompleted = d.status === 'Completed';
+      const durationColor = isCompleted ? '#059669' : diffHours >= 24 ? '#dc2626' : diffHours >= 4 ? '#d97706' : '#64748b';
+      durationEl.innerHTML = `<span style="color:${durationColor};font-weight:600;font-size:.82rem;">${isCompleted ? '✓ Resolved' : '⏱ Open for'} ${durationStr}</span>`;
+    }
+
     document.getElementById('exp-proc-time').textContent = `${(d.processing_time_ms || 0).toFixed(0)}ms`;
     document.getElementById('exp-description').textContent = d.description || '';
 
@@ -865,7 +1058,32 @@ async function selectExplorerTicket(ticketId) {
     document.getElementById('exp-requires-approval').textContent = d.routing?.requires_approval ? 'Yes' : 'No';
     document.getElementById('exp-routing-reason').textContent = d.routing?.reason || '';
 
+    const qmContainer = document.getElementById('exp-queue-members');
+    const queueMembers = d.routing?.queue_members || [];
+    if (qmContainer) {
+      if (queueMembers.length > 0) {
+        qmContainer.innerHTML = queueMembers.map((m) => {
+          const isAssigned = d.assigned_to === m.username;
+          const cls = isAssigned ? 'badge badge-expert' : 'badge badge-queue-member';
+          return `<span class="${cls}" title="${m.username}">${m.display_name}</span>`;
+        }).join(' ');
+      } else {
+        qmContainer.innerHTML = '<span style="font-size:.78rem;color:var(--hope-text-muted)">No queue members configured.</span>';
+      }
+    }
+
     document.getElementById('exp-ai-resolution').textContent = d.ai_resolution || 'No AI resolution generated.';
+
+    // Show translate button for Spanish tickets
+    const translateContainer = document.getElementById('exp-translate-container');
+    const translationResult = document.getElementById('exp-translation-result');
+    if (translateContainer) {
+      const ticketLang = (d.classification?.language || 'en').toLowerCase();
+      translateContainer.style.display = (ticketLang === 'es' && d.ai_resolution) ? '' : 'none';
+      translationResult.style.display = 'none';
+      const btn = document.getElementById('btn-translate-resolution');
+      if (btn) { btn.disabled = false; btn.dataset.state = ''; btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/></svg> Translate to English'; }
+    }
 
     const similarContainer = document.getElementById('exp-similar-tickets');
     const simIds = d.similar_ticket_ids || [];
@@ -947,6 +1165,80 @@ async function selectExplorerTicket(ticketId) {
       recContainer.innerHTML = '<span style="font-size:.78rem;color:var(--hope-text-muted)">Could not load recommendations.</span>';
     }
   } catch {}
+}
+
+async function translateResolution() {
+  _translatePanelText(
+    selectedExplorerTicketId,
+    () => document.getElementById('exp-ai-resolution').textContent,
+    'btn-translate-resolution', 'exp-translation-result', 'exp-translated-text'
+  );
+}
+
+/* ─── Generic bidirectional translate helper for management / myqueue panels ─── */
+async function _translatePanelText(ticketId, textSource, btnId, resultDivId, textDivId) {
+  if (!ticketId) return;
+  const btn = document.getElementById(btnId);
+  const resultDiv = document.getElementById(resultDivId);
+  const textDiv = document.getElementById(textDivId);
+  if (!btn || !resultDiv || !textDiv) return;
+
+  // Toggle: if already showing translation, hide it and swap label
+  if (resultDiv.style.display !== 'none' && resultDiv.style.display !== '') {
+    // Currently showing English → offer to show original (Spanish)
+    if (btn.dataset.state === 'translated') {
+      resultDiv.style.display = 'none';
+      btn.dataset.state = 'original';
+      btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/></svg> Translate to English';
+      return;
+    }
+  }
+
+  // If we already translated, just show it again
+  if (textDiv.textContent && btn.dataset.state === 'original') {
+    resultDiv.style.display = '';
+    btn.dataset.state = 'translated';
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/></svg> Show Original (Spanish)';
+    return;
+  }
+
+  const originalText = typeof textSource === 'function' ? textSource() : textSource;
+  if (!originalText) return;
+
+  btn.disabled = true;
+  btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/></svg> Translating...';
+
+  try {
+    const data = await apiFetch(`/tickets/${ticketId}/translate`, {
+      method: 'POST',
+      body: JSON.stringify({ text: originalText, source_language: 'es', target_language: 'en' }),
+    });
+    textDiv.textContent = data.translated_text;
+    resultDiv.style.display = '';
+    btn.dataset.state = 'translated';
+    btn.disabled = false;
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/></svg> Show Original (Spanish)';
+  } catch (err) {
+    showToast('Translation failed. Please try again.', 'error');
+    btn.disabled = false;
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/></svg> Translate to English';
+  }
+}
+
+async function translateMgmtResolution() {
+  _translatePanelText(
+    selectedMgmtTicketId,
+    () => document.getElementById('mgmt-resolution-text').value,
+    'btn-mgmt-translate', 'mgmt-translation-result', 'mgmt-translated-text'
+  );
+}
+
+async function translateMqResolution() {
+  _translatePanelText(
+    selectedMyQueueTicketId,
+    () => document.getElementById('mq-ai-suggestion').textContent,
+    'btn-mq-translate', 'mq-translation-result', 'mq-translated-text'
+  );
 }
 
 async function loadKBInline(headerEl, articleTitle) {
@@ -1372,18 +1664,20 @@ async function reingestKB() {
   }
 }
 
-/* ─── Configuration: Inline Engineer Expertise ─── */
+/* ─── Configuration: Queue Team Members ─── */
 let configEngineers = [];
 let configExpertise = {};
 
 async function loadExpertiseConfig() {
   try {
-    const [engData, expData] = await Promise.all([
+    const [engData, expData, queueData] = await Promise.all([
       apiFetch('/users/engineers'),
       apiFetch('/config/expertise'),
+      apiFetch('/queues'),
     ]);
     configEngineers = engData.engineers || [];
     configExpertise = expData.expertise || {};
+    cachedQueues = queueData.queues || {};
 
     const expertByCategory = {};
     for (const [eng, cats] of Object.entries(configExpertise)) {
@@ -1395,11 +1689,24 @@ async function loadExpertiseConfig() {
 
     document.querySelectorAll('.config-eng-cell').forEach((cell) => {
       const catId = cell.dataset.category;
+      const queueName = cell.dataset.queue;
       const tagContainer = cell.querySelector('.config-eng-tags');
+      const queueConfig = cachedQueues[queueName];
+      const queueMemberNames = queueConfig ? queueConfig.members.map((m) => m.username) : [];
       const assigned = expertByCategory[catId] || [];
-      tagContainer.innerHTML = configEngineers.map((e) =>
-        `<span class="config-eng-tag ${assigned.includes(e.username) ? 'active' : ''}" data-eng="${e.username}" data-cat="${catId}" onclick="toggleConfigTag(this)">${e.display_name}</span>`
-      ).join('');
+
+      tagContainer.innerHTML = configEngineers.map((e) => {
+        const isMember = queueMemberNames.includes(e.username);
+        const isExpert = assigned.includes(e.username);
+        if (!isMember && !isExpert) return '';
+        const cls = isMember ? 'config-eng-tag active' : 'config-eng-tag';
+        const badge = isMember ? '' : ' <span style="font-size:.6rem;opacity:.6">(expert)</span>';
+        return `<span class="${cls}" data-eng="${e.username}" data-cat="${catId}" onclick="toggleConfigTag(this)">${e.display_name}${badge}</span>`;
+      }).filter(Boolean).join('');
+
+      if (!tagContainer.innerHTML) {
+        tagContainer.innerHTML = '<span style="font-size:.75rem;color:var(--hope-text-muted)">No members</span>';
+      }
     });
   } catch (e) {
     console.error('Failed to load expertise config:', e);
@@ -1546,8 +1853,24 @@ document.addEventListener('DOMContentLoaded', () => {
   initSampleChips();
 
   const stored = getStoredUser();
-  if (stored) {
-    currentUser = stored;
-    showApp();
+  const token = getAuthToken();
+  if (stored && token) {
+    // Validate the stored token is still accepted by the server
+    fetch(`${API}/tickets?limit=1`, { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } })
+      .then(res => {
+        if (res.ok || res.status === 403) {
+          // Token is valid (200) or user lacks permission (403) — either way, auth works
+          currentUser = stored;
+          showApp();
+        } else {
+          // 401 = token expired or server restarted — force clean re-login
+          clearStoredUser();
+        }
+      })
+      .catch(() => {
+        // Network error — try anyway with stored session
+        currentUser = stored;
+        showApp();
+      });
   }
 });

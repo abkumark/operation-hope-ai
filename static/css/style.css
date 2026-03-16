@@ -450,6 +450,65 @@ tbody tr.row-selected:hover { background: rgba(201,169,97,.18); }
   white-space: pre-wrap;
 }
 
+/* ─── Language Toggle (inline styles on HTML — CSS kept minimal) ─── */
+
+/* ─── Translate Toggle Button ─── */
+.translate-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(0,62,126,.2);
+  background: rgba(0,62,126,.04);
+  color: var(--hope-navy);
+  font-size: .78rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.translate-toggle-btn:hover {
+  background: rgba(0,62,126,.08);
+  border-color: var(--hope-navy);
+}
+
+.translate-toggle-btn:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+}
+
+.translate-toggle-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.translation-result-box {
+  display: none;
+  margin-top: 10px;
+  background: #f0f9ff;
+  border-left: 4px solid var(--hope-navy);
+  border-radius: 6px;
+  padding: 14px;
+}
+
+.translation-result-box .translation-label {
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--hope-navy);
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.translation-result-box .translation-text {
+  white-space: pre-wrap;
+  font-size: .88rem;
+  color: var(--hope-text);
+  line-height: 1.7;
+}
+
 /* ─── Sample chips ─── */
 .sample-chips {
   display: flex;
@@ -1326,6 +1385,13 @@ tbody tr.row-selected:hover { background: rgba(201,169,97,.18); }
   color: #065f46;
   font-size: .68rem;
   font-weight: 700;
+}
+
+.badge-queue-member {
+  background: #e0e7ff;
+  color: #3730a3;
+  font-size: .68rem;
+  font-weight: 600;
 }
 
 .recommend-load {
