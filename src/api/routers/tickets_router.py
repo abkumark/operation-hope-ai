@@ -76,10 +76,17 @@ def _looks_spanish(text: str) -> bool:
 
 
 def _can_translate_to_english(text: str, language: str = "") -> bool:
-    normalized_lang = (language or "").strip().lower()
-    if normalized_lang in {"es", "spanish"}:
+    """Return True only when the actual text contains Spanish content.
+
+    The LLM classifier occasionally misidentifies English tickets as "es",
+    so we always verify by checking the text itself — the language tag alone
+    is not sufficient.
+    """
+    if _looks_spanish(text):
         return True
-    return _looks_spanish(text)
+    # If the classifier says "es" but the text has no Spanish indicators,
+    # don't show the translate button — it's a false positive.
+    return False
 
 
 def _build_translation_meta(text: str, language: str = "") -> dict[str, Any]:
@@ -446,6 +453,7 @@ async def resolve_ticket(
                 recipient_email=email,
                 recipient_name=name,
                 resolution_text=resolution_text,
+                language=ticket_language,
             )
         except Exception as exc:
             _logger.exception("Failed to send close email for %s: %s", ticket_id, exc)
