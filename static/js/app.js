@@ -13,6 +13,13 @@ function fmtDate(iso) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 }
 
+function ticketDisplayTimestamp(ticket, preferUpdated = false) {
+  if (!ticket) return '';
+  return preferUpdated
+    ? (ticket.updated_at || ticket.created_at || ticket.processed_at || '')
+    : (ticket.created_at || ticket.updated_at || ticket.processed_at || '');
+}
+
 function _resetTranslateButton(btn, label = 'Translate to English') {
   if (!btn) return;
   btn.disabled = false;
@@ -557,7 +564,7 @@ async function loadDashboard() {
         <tr>
           <td><strong>${t.ticket_id}</strong></td>
           <td>${(t.subject || '').substring(0, 40)}${(t.subject || '').length > 40 ? '...' : ''}</td>
-          <td style="white-space:nowrap;font-size:.78rem;color:var(--hope-text-muted)">${fmtDate(t.processed_at)}</td>
+          <td style="white-space:nowrap;font-size:.78rem;color:var(--hope-text-muted)">${fmtDate(ticketDisplayTimestamp(t))}</td>
           <td>${t.category_name || t.category_id}</td>
           <td>${confBar(t.confidence)}</td>
           <td>${approvalBadge(t.approval_status || t.routing_action)}</td>
@@ -707,7 +714,7 @@ async function loadManagement() {
       <tr onclick="selectMgmtTicket('${t.ticket_id}')" class="${selectedMgmtTicketId === t.ticket_id ? 'row-selected' : ''}">
         <td><strong>${t.ticket_id}</strong></td>
         <td title="${(t.subject || '').replace(/"/g, '&quot;')}">${(t.subject || '').substring(0, 35)}${(t.subject || '').length > 35 ? '...' : ''}</td>
-        <td style="white-space:nowrap;font-size:.78rem;color:var(--hope-text-muted)">${fmtDate(t.processed_at)}</td>
+  <td style="white-space:nowrap;font-size:.78rem;color:var(--hope-text-muted)">${fmtDate(ticketDisplayTimestamp(t, true))}</td>
         <td>${statusBadge(t.status)}</td>
         <td>${renderQueueMembers(t.queue_members, t.assigned_to)}</td>
         <td>${t.category_name || t.category_id}</td>
@@ -900,7 +907,7 @@ async function loadMyQueue() {
       <tr onclick="selectMyQueueTicket('${t.ticket_id}')" class="${selectedMyQueueTicketId === t.ticket_id ? 'row-selected' : ''}">
         <td><strong>${t.ticket_id}</strong></td>
         <td title="${(t.subject || '').replace(/"/g, '&quot;')}">${(t.subject || '').substring(0, 35)}${(t.subject || '').length > 35 ? '...' : ''}</td>
-        <td style="white-space:nowrap;font-size:.78rem;color:var(--hope-text-muted)">${fmtDate(t.processed_at)}</td>
+  <td style="white-space:nowrap;font-size:.78rem;color:var(--hope-text-muted)">${fmtDate(ticketDisplayTimestamp(t, true))}</td>
         <td>${statusBadge(t.status)}</td>
         <td>${t.category_name || t.category_id}</td>
         <td>${confBar(t.confidence)}</td>
@@ -1010,7 +1017,7 @@ function renderExplorerTable(tickets) {
     <tr onclick="selectExplorerTicket('${t.ticket_id}')" class="${selectedExplorerTicketId === t.ticket_id ? 'row-selected' : ''}" style="cursor:pointer">
       <td><strong>${t.ticket_id}</strong></td>
       <td title="${(t.subject || '').replace(/"/g, '&quot;')}">${(t.subject || '').substring(0, 40)}${(t.subject || '').length > 40 ? '...' : ''}</td>
-      <td style="white-space:nowrap;font-size:.78rem;color:var(--hope-text-muted)">${fmtDate(t.processed_at)}</td>
+  <td style="white-space:nowrap;font-size:.78rem;color:var(--hope-text-muted)">${fmtDate(ticketDisplayTimestamp(t))}</td>
       <td>${t.category_name || t.category_id}</td>
       <td>${confBar(t.confidence)}</td>
       <td>${statusBadge(t.status)}</td>
@@ -1053,13 +1060,15 @@ async function selectExplorerTicket(ticketId) {
     document.getElementById('exp-sentiment').innerHTML = sentimentBadge(d.classification?.sentiment);
     document.getElementById('exp-subject').textContent = d.subject || '';
     document.getElementById('exp-submitter').textContent = d.submitter || 'Unknown';
-    const ts = d.processed_at ? new Date(d.processed_at).toLocaleString() : '';
+  const createdLabel = d.created_at ? `Created ${new Date(d.created_at).toLocaleString()}` : '';
+  const updatedLabel = d.updated_at ? `Updated ${new Date(d.updated_at).toLocaleString()}` : '';
+  const ts = [createdLabel, updatedLabel].filter(Boolean).join(' • ');
     document.getElementById('exp-timestamp').textContent = ts || '';
 
     // Calculate and display ticket age / open duration
     const durationEl = document.getElementById('exp-duration');
-    if (durationEl && d.processed_at) {
-      const created = new Date(d.processed_at);
+    if (durationEl && (d.created_at || d.processed_at)) {
+      const created = new Date(d.created_at || d.processed_at);
       const now = new Date();
       const diffMs = now - created;
       const diffMins = Math.floor(diffMs / 60000);

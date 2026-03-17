@@ -233,7 +233,7 @@ async def public_ticket_status(ticket_id: str, email: str = "") -> dict[str, Any
         "subject": target.subject,
         "status": target.status,
         "category": target.classification.category_name,
-        "submitted_at": target.processed_at.isoformat(),
+        "submitted_at": target.created_at.isoformat(),
         "ai_resolution": target.ai_resolution if target.status == "Completed" else None,
         "assigned_to": target.assigned_to or None,
         "has_feedback": len(existing_feedback) > 0,
@@ -314,6 +314,8 @@ async def list_tickets(
                 "approval_status": t.approval.status.value if t.approval else None,
                 "processing_time_ms": t.processing_time_ms,
                 "processed_at": t.processed_at.isoformat(),
+                "created_at": t.created_at.isoformat(),
+                "updated_at": t.updated_at.isoformat(),
             }
             for t in tickets
         ],
@@ -376,6 +378,8 @@ async def get_ticket(ticket_id: str, user: User = Depends(require_auth)) -> dict
         "kb_articles_used": kb_articles,
         "processing_time_ms": t.processing_time_ms,
         "processed_at": t.processed_at.isoformat(),
+        "created_at": t.created_at.isoformat(),
+        "updated_at": t.updated_at.isoformat(),
         "action_summary": t.action_summary,
     }
 
@@ -442,7 +446,6 @@ async def resolve_ticket(
                 recipient_email=email,
                 recipient_name=name,
                 resolution_text=resolution_text,
-                language=ticket_language,
             )
         except Exception as exc:
             _logger.exception("Failed to send close email for %s: %s", ticket_id, exc)
@@ -626,6 +629,9 @@ async def my_queue(username: str, user: User = Depends(require_auth)) -> dict[st
                 "category_name": t.classification.category_name,
                 "confidence": t.classification.confidence,
                 "queue": t.routing.queue,
+                "created_at": t.created_at.isoformat(),
+                "updated_at": t.updated_at.isoformat(),
+                "processed_at": t.processed_at.isoformat(),
             }
             for t in tickets
         ],

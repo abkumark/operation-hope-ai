@@ -44,6 +44,8 @@ class PipelineResult:
     similar_ticket_ids: list[str] = field(default_factory=list)
     assigned_to: str = ""
     processed_at: datetime = field(default_factory=datetime.now)
+    created_at: datetime = field(default_factory=datetime.now)
+    updated_at: datetime = field(default_factory=datetime.now)
     processing_time_ms: float = 0.0
 
     @property
@@ -219,6 +221,8 @@ def _load_pipeline_result(row) -> PipelineResult:
         similar_ticket_ids=similar_ids,
         assigned_to=row["assigned_to"] if "assigned_to" in cols else "",
         processed_at=datetime.fromisoformat(row["processed_at"]),
+        created_at=datetime.fromisoformat(row["created_at"]) if "created_at" in cols and row["created_at"] else datetime.fromisoformat(row["processed_at"]),
+        updated_at=datetime.fromisoformat(row["updated_at"]) if "updated_at" in cols and row["updated_at"] else datetime.fromisoformat(row["processed_at"]),
         processing_time_ms=float(row["processing_time_ms"]),
     )
 
