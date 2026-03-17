@@ -72,6 +72,20 @@ class TestAuthEndpoint:
         resp = client.get("/api/v1/tickets")
         assert resp.status_code == 401
 
+    def test_auth_me_returns_logged_in_admin(self, client, admin_headers):
+        resp = client.get("/api/v1/auth/me", headers=admin_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["username"] == "admin"
+        assert data["role"] == "admin"
+
+    def test_auth_me_returns_logged_in_engineer(self, client, engineer_headers):
+        resp = client.get("/api/v1/auth/me", headers=engineer_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["username"] == "torri"
+        assert data["role"] == "engineer"
+
 
 class TestTicketEndpoints:
     @patch("src.core.classifier.get_llm_provider")

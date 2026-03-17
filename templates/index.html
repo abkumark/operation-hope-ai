@@ -233,9 +233,9 @@
           <div class="card-header">Recent Tickets</div>
           <div class="card-body table-wrap">
             <table>
-              <thead><tr><th>ID</th><th>Subject</th><th>Category</th><th>Confidence</th><th>Status</th></tr></thead>
+              <thead><tr><th>ID</th><th>Subject</th><th>Date</th><th>Category</th><th>Confidence</th><th>Status</th></tr></thead>
               <tbody id="recent-tickets">
-                <tr><td colspan="5" class="empty-state"><p>No tickets yet. Process one to get started.</p></td></tr>
+                <tr><td colspan="6" class="empty-state"><p>No tickets yet. Process one to get started.</p></td></tr>
               </tbody>
             </table>
           </div>
@@ -284,6 +284,7 @@
                   <tr>
                     <th>ID</th>
                     <th>Subject</th>
+                    <th>Date</th>
                     <th>Status</th>
                     <th>Queue Team</th>
                     <th>Category</th>
@@ -292,7 +293,7 @@
                   </tr>
                 </thead>
                 <tbody id="mgmt-tbody">
-                  <tr><td colspan="7" class="empty-state"><p>No tickets to display.</p></td></tr>
+                  <tr><td colspan="8" class="empty-state"><p>No tickets to display.</p></td></tr>
                 </tbody>
               </table>
             </div>
@@ -389,6 +390,7 @@
                 <tr>
                   <th>ID</th>
                   <th>Subject</th>
+                  <th>Date</th>
                   <th>Status</th>
                   <th>Category</th>
                   <th>Confidence</th>
@@ -396,7 +398,7 @@
                 </tr>
               </thead>
               <tbody id="myqueue-tbody">
-                <tr><td colspan="6" class="empty-state"><p>No tickets assigned to you.</p></td></tr>
+                <tr><td colspan="7" class="empty-state"><p>No tickets assigned to you.</p></td></tr>
               </tbody>
             </table>
           </div>
@@ -486,9 +488,9 @@
             </div>
             <div class="table-wrap" style="max-height:calc(100vh - 260px);overflow-y:auto">
               <table>
-                <thead><tr><th>ID</th><th>Subject</th><th>Category</th><th>Confidence</th><th>Status</th></tr></thead>
+                <thead><tr><th>ID</th><th>Subject</th><th>Date</th><th>Category</th><th>Confidence</th><th>Status</th></tr></thead>
                 <tbody id="explorer-tbody">
-                  <tr><td colspan="5" class="empty-state"><p>No tickets to display.</p></td></tr>
+                  <tr><td colspan="6" class="empty-state"><p>No tickets to display.</p></td></tr>
                 </tbody>
               </table>
             </div>
@@ -948,6 +950,6 @@
 
 </div><!-- end app-shell -->
 <div id="toast-container" class="toast-container"></div>
-<script src="/static/js/app.js?v=2.1"></script>
+<script src="/static/js/app.js?v=2.3"></script>
 </body>
 </html>

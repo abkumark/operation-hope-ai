@@ -109,13 +109,13 @@ async def llm_status(user: User = Depends(require_admin)) -> dict[str, Any]:
 # ── Analytics ────────────────────────────────────────────────────────────
 
 @router.get("/analytics/summary")
-async def analytics_summary(user: User = Depends(require_admin)) -> dict[str, Any]:
+async def analytics_summary(user: User = Depends(require_auth)) -> dict[str, Any]:
     """Get analytics summary report."""
     return generate_summary_report()
 
 
 @router.get("/analytics/trends")
-async def analytics_trends(user: User = Depends(require_admin)) -> dict[str, Any]:
+async def analytics_trends(user: User = Depends(require_auth)) -> dict[str, Any]:
     """Strategic trend analysis."""
     return generate_trend_report()
 
@@ -161,8 +161,8 @@ async def check_stale_escalations(user: User = Depends(require_admin)) -> dict[s
         try:
             members = get_queue_members(queue_name) if queue_name else []
             recipients = get_engineer_emails(members) if members else []
-            # Always include escalation sender for visibility
-            escalation_email = settings.smtp_sender
+            # Always include the configured escalation mailbox for visibility
+            escalation_email = settings.escalation_email or settings.smtp_sender
             if escalation_email and not any(r[1] == escalation_email for r in recipients):
                 recipients.append(("Escalation Alerts", escalation_email))
             send_escalation_notification(

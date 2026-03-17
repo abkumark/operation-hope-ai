@@ -7,6 +7,12 @@ let currentUser = null;
 let cachedEngineers = [];
 let cachedQueues = {};
 
+function fmtDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+}
+
 function _resetTranslateButton(btn, label = 'Translate to English') {
   if (!btn) return;
   btn.disabled = false;
@@ -500,10 +506,14 @@ async function apiFetch(path, opts = {}) {
       showToast('Session expired. Please log in again.', 'error');
       throw new Error('Session expired');
     }
+    if (res.status === 403) {
+      // Insufficient permissions — don't show scary toast, just throw
+      throw new Error('forbidden');
+    }
     if (!res.ok) throw new Error(`API error: ${res.status}`);
     return await res.json();
   } catch (e) {
-    showToast(e.message, 'error');
+    if (e.message !== 'forbidden') showToast(e.message, 'error');
     throw e;
   }
 }
@@ -533,7 +543,7 @@ async function loadDashboard() {
     const overview = summary.overview || {};
     const ai = summary.ai_assistance || {};
 
-    document.getElementById('kpi-total').textContent = overview.total || 0;
+    document.getElementById('kpi-total').textContent = overview.total || (ticketData.total || 0);
     document.getElementById('kpi-ai-draft').textContent = `${((ai.draft_rate || 0) * 100).toFixed(1)}%`;
     document.getElementById('kpi-sent').textContent = ai.sent || 0;
     document.getElementById('kpi-pending').textContent = ai.pending_approval || 0;
@@ -541,12 +551,13 @@ async function loadDashboard() {
     const tickets = ticketData.tickets || [];
     const tbody = document.getElementById('recent-tickets');
     if (tickets.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><p>No tickets processed yet.</p></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><p>No tickets processed yet.</p></td></tr>';
     } else {
       tbody.innerHTML = tickets.slice(-8).reverse().map((t) => `
         <tr>
           <td><strong>${t.ticket_id}</strong></td>
           <td>${(t.subject || '').substring(0, 40)}${(t.subject || '').length > 40 ? '...' : ''}</td>
+          <td style="white-space:nowrap;font-size:.78rem;color:var(--hope-text-muted)">${fmtDate(t.processed_at)}</td>
           <td>${t.category_name || t.category_id}</td>
           <td>${confBar(t.confidence)}</td>
           <td>${approvalBadge(t.approval_status || t.routing_action)}</td>
@@ -687,7 +698,7 @@ async function loadManagement() {
     const tbody = document.getElementById('mgmt-tbody');
     document.getElementById('mgmt-count').textContent = `${tickets.length} tickets`;
     if (tickets.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><p>No tickets to display.</p></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><p>No tickets to display.</p></td></tr>';
       document.getElementById('mgmt-empty').style.display = 'block';
       document.getElementById('mgmt-editor').style.display = 'none';
       return;
@@ -696,6 +707,7 @@ async function loadManagement() {
       <tr onclick="selectMgmtTicket('${t.ticket_id}')" class="${selectedMgmtTicketId === t.ticket_id ? 'row-selected' : ''}">
         <td><strong>${t.ticket_id}</strong></td>
         <td title="${(t.subject || '').replace(/"/g, '&quot;')}">${(t.subject || '').substring(0, 35)}${(t.subject || '').length > 35 ? '...' : ''}</td>
+        <td style="white-space:nowrap;font-size:.78rem;color:var(--hope-text-muted)">${fmtDate(t.processed_at)}</td>
         <td>${statusBadge(t.status)}</td>
         <td>${renderQueueMembers(t.queue_members, t.assigned_to)}</td>
         <td>${t.category_name || t.category_id}</td>
@@ -879,7 +891,7 @@ async function loadMyQueue() {
     const tbody = document.getElementById('myqueue-tbody');
     document.getElementById('myqueue-count').textContent = `${tickets.length} tickets`;
     if (tickets.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><p>No tickets assigned to you.</p></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><p>No tickets assigned to you.</p></td></tr>';
       document.getElementById('myqueue-empty').style.display = 'block';
       document.getElementById('myqueue-editor').style.display = 'none';
       return;
@@ -888,6 +900,7 @@ async function loadMyQueue() {
       <tr onclick="selectMyQueueTicket('${t.ticket_id}')" class="${selectedMyQueueTicketId === t.ticket_id ? 'row-selected' : ''}">
         <td><strong>${t.ticket_id}</strong></td>
         <td title="${(t.subject || '').replace(/"/g, '&quot;')}">${(t.subject || '').substring(0, 35)}${(t.subject || '').length > 35 ? '...' : ''}</td>
+        <td style="white-space:nowrap;font-size:.78rem;color:var(--hope-text-muted)">${fmtDate(t.processed_at)}</td>
         <td>${statusBadge(t.status)}</td>
         <td>${t.category_name || t.category_id}</td>
         <td>${confBar(t.confidence)}</td>
@@ -990,13 +1003,14 @@ function renderExplorerTable(tickets) {
   const tbody = document.getElementById('explorer-tbody');
   document.getElementById('explorer-count').textContent = `${tickets.length} tickets`;
   if (tickets.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><p>No tickets match your filter.</p></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><p>No tickets match your filter.</p></td></tr>';
     return;
   }
   tbody.innerHTML = tickets.map((t) => `
     <tr onclick="selectExplorerTicket('${t.ticket_id}')" class="${selectedExplorerTicketId === t.ticket_id ? 'row-selected' : ''}" style="cursor:pointer">
       <td><strong>${t.ticket_id}</strong></td>
       <td title="${(t.subject || '').replace(/"/g, '&quot;')}">${(t.subject || '').substring(0, 40)}${(t.subject || '').length > 40 ? '...' : ''}</td>
+      <td style="white-space:nowrap;font-size:.78rem;color:var(--hope-text-muted)">${fmtDate(t.processed_at)}</td>
       <td>${t.category_name || t.category_id}</td>
       <td>${confBar(t.confidence)}</td>
       <td>${statusBadge(t.status)}</td>
@@ -1919,10 +1933,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const token = getAuthToken();
   if (stored && token) {
     // Validate the stored token is still accepted by the server
-    fetch(`${API}/tickets?limit=1`, { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } })
+    fetch(`${API}/auth/me`, { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } })
       .then(res => {
-        if (res.ok || res.status === 403) {
-          // Token is valid (200) or user lacks permission (403) — either way, auth works
+        if (res.ok) {
+          // Token is valid — restore the session without forcing a new login
           currentUser = stored;
           showApp();
         } else {

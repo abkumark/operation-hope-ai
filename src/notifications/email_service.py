@@ -114,14 +114,56 @@ def send_ticket_confirmation(
     recipient_email: str,
     recipient_name: str,
     subject: str,
+    language: str = "en",
 ) -> None:
     """Send a confirmation email after a public ticket is created."""
-    email_subject = f"[{ticket_id}] Your support request has been received"
+    is_es = (language or "").strip().lower() in ("es", "spanish")
+
+    email_subject = (
+        f"[{ticket_id}] Su solicitud de soporte ha sido recibida"
+        if is_es
+        else f"[{ticket_id}] Your support request has been received"
+    )
     safe_recipient_name = html.escape(recipient_name)
     safe_ticket_id = html.escape(ticket_id)
     safe_subject = html.escape(subject)
 
-    inner_html = f"""\
+    if is_es:
+        inner_html = f"""\
+<h2 style="margin:0 0 12px;color:#003E7E;font-size:20px;">Solicitud Recibida</h2>
+<p style="color:#1e293b;font-size:14px;line-height:1.7;">
+  Hola {safe_recipient_name},
+</p>
+<p style="color:#1e293b;font-size:14px;line-height:1.7;">
+  Gracias por contactar a Operation HOPE. Su solicitud de soporte ha sido recibida
+  y asignada al equipo correspondiente.
+</p>
+<table width="100%" style="margin:20px 0;border:2px dashed #C9A961;border-radius:10px;padding:16px;">
+  <tr>
+    <td style="text-align:center;">
+      <span style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#64748b;">ID del Ticket</span><br>
+      <strong style="font-size:22px;color:#003E7E;font-family:monospace;">{safe_ticket_id}</strong>
+    </td>
+  </tr>
+</table>
+<p style="color:#1e293b;font-size:14px;line-height:1.7;">
+  <strong>Asunto:</strong> {safe_subject}
+</p>
+<p style="color:#64748b;font-size:13px;line-height:1.7;">
+  Recibirá actualizaciones por correo electrónico a medida que su solicitud sea
+  revisada y procesada. Por favor guarde su ID de ticket como referencia.
+</p>"""
+
+        text_body = (
+            f"Hola {recipient_name},\n\n"
+            f"Su solicitud de soporte ha sido recibida.\n"
+            f"ID del Ticket: {ticket_id}\n"
+            f"Asunto: {subject}\n\n"
+            f"Recibirá actualizaciones a medida que su solicitud sea procesada.\n\n"
+            f"-- Operation HOPE"
+        )
+    else:
+        inner_html = f"""\
 <h2 style="margin:0 0 12px;color:#003E7E;font-size:20px;">Request Received</h2>
 <p style="color:#1e293b;font-size:14px;line-height:1.7;">
   Hi {safe_recipient_name},
@@ -146,14 +188,14 @@ def send_ticket_confirmation(
   Please save your ticket ID for reference.
 </p>"""
 
-    text_body = (
-        f"Hi {recipient_name},\n\n"
-        f"Your support request has been received.\n"
-        f"Ticket ID: {ticket_id}\n"
-        f"Subject: {subject}\n\n"
-        f"You will receive updates as your request is processed.\n\n"
-        f"-- Operation HOPE"
-    )
+        text_body = (
+            f"Hi {recipient_name},\n\n"
+            f"Your support request has been received.\n"
+            f"Ticket ID: {ticket_id}\n"
+            f"Subject: {subject}\n\n"
+            f"You will receive updates as your request is processed.\n\n"
+            f"-- Operation HOPE"
+        )
 
     html_body = _brand_html(inner_html)
 
@@ -281,14 +323,50 @@ def send_case_closed_email(
     recipient_email: str,
     recipient_name: str,
     resolution_text: str = "",
+    language: str = "en",
 ) -> None:
     """Send a branded case-closed email when a ticket is resolved/closed."""
-    email_subject = f"[{ticket_id}] Your support request has been resolved"
+    is_es = (language or "").strip().lower() in ("es", "spanish")
+
+    email_subject = (
+        f"[{ticket_id}] Su solicitud de soporte ha sido resuelta"
+        if is_es
+        else f"[{ticket_id}] Your support request has been resolved"
+    )
     safe_recipient_name = html.escape(recipient_name)
     safe_ticket_id = html.escape(ticket_id)
     safe_resolution = html.escape(resolution_text).replace("\n", "<br>") if resolution_text else ""
 
-    inner_html = f"""\
+    if is_es:
+        inner_html = f"""\
+<h2 style="margin:0 0 12px;color:#003E7E;font-size:20px;">Caso Resuelto</h2>
+<p style="color:#1e293b;font-size:14px;line-height:1.7;">
+  Hola {safe_recipient_name},
+</p>
+<p style="color:#1e293b;font-size:14px;line-height:1.7;">
+  ¡Buenas noticias! Su solicitud de soporte <strong>{safe_ticket_id}</strong> ha sido resuelta
+  y ahora está cerrada.
+</p>
+{"<table width='100%' style='margin:20px 0;background:#f0fdf4;border-left:4px solid #059669;border-radius:6px;padding:16px;'><tr><td><span style='font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#059669;'>Resolución</span><br><span style='font-size:14px;color:#1e293b;line-height:1.7;'>" + safe_resolution + "</span></td></tr></table>" if resolution_text else ""}
+<p style="color:#64748b;font-size:13px;line-height:1.7;">
+  Si esto no resolvió completamente su problema, o si tiene preguntas adicionales,
+  responda con su ID de ticket <strong>{safe_ticket_id}</strong> y reabriremos su caso.
+</p>
+<p style="color:#64748b;font-size:13px;line-height:1.7;">
+  Gracias por su paciencia y por ser parte de la comunidad de Operation HOPE.
+</p>"""
+
+        text_body = (
+            f"Hola {recipient_name},\n\n"
+            f"Su solicitud de soporte {ticket_id} ha sido resuelta y ahora está cerrada.\n\n"
+            f"{('Resolución: ' + resolution_text + chr(10) + chr(10)) if resolution_text else ''}"
+            f"Si esto no resolvió completamente su problema, responda con su ID de ticket "
+            f"y reabriremos su caso.\n\n"
+            f"Gracias,\n"
+            f"-- Operation HOPE"
+        )
+    else:
+        inner_html = f"""\
 <h2 style="margin:0 0 12px;color:#003E7E;font-size:20px;">Case Resolved</h2>
 <p style="color:#1e293b;font-size:14px;line-height:1.7;">
   Hi {safe_recipient_name},

@@ -91,8 +91,8 @@ def _start_escalation_scheduler() -> None:
                 try:
                     members = get_queue_members(queue_name) if queue_name else []
                     recipients = get_engineer_emails(members) if members else []
-                    # Always include the configured escalation email
-                    escalation_email = settings.smtp_sender
+                    # Always include the configured escalation mailbox
+                    escalation_email = settings.escalation_email or settings.smtp_sender
                     if escalation_email and not any(r[1] == escalation_email for r in recipients):
                         recipients.append(("Escalation Alerts", escalation_email))
                     send_escalation_notification(

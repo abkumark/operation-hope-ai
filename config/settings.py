@@ -81,6 +81,10 @@ class Settings(BaseSettings):
     smtp_password: str = Field(default="", description="SMTP auth password")
     smtp_sender: str = Field(default="noreply@operationhope.org", description="From address")
     smtp_use_tls: bool = Field(default=True, description="Use STARTTLS for SMTP")
+    escalation_email: str = Field(
+        default="operationhope15@gmail.com",
+        description="Mailbox that receives escalation alert copies",
+    )
 
     # Application
     app_env: str = Field(default="development")

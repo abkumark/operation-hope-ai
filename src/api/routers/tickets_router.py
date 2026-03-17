@@ -104,6 +104,7 @@ class PublicTicketRequest(BaseModel):
 
 def _send_confirmation_email_background(
     ticket_id: str, subject: str, submitter_name: str, submitter_email: str,
+    language: str = "en",
 ) -> None:
     try:
         send_ticket_confirmation(
@@ -111,6 +112,7 @@ def _send_confirmation_email_background(
             recipient_email=submitter_email,
             recipient_name=submitter_name,
             subject=subject,
+            language=language,
         )
     except Exception as exc:
         _logger.exception("Failed to send confirmation email for %s: %s", ticket_id, exc)
@@ -185,6 +187,7 @@ async def submit_public_ticket(
         subject=request.subject,
         submitter_name=request.submitter_name,
         submitter_email=request.submitter_email,
+        language=request.language,
     )
     background_tasks.add_task(
         _process_ticket_background,
@@ -431,6 +434,7 @@ async def resolve_ticket(
 
     name, email = get_submitter_email(ticket_id)
     resolution_text = request.ai_resolution or ticket.ai_resolution or "Your request has been resolved."
+    ticket_language = ticket.classification.language if ticket.classification else "en"
     if email:
         try:
             send_case_closed_email(
@@ -438,6 +442,7 @@ async def resolve_ticket(
                 recipient_email=email,
                 recipient_name=name,
                 resolution_text=resolution_text,
+                language=ticket_language,
             )
         except Exception as exc:
             _logger.exception("Failed to send close email for %s: %s", ticket_id, exc)

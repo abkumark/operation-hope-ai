@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
+from src.api.deps import require_auth
 from src.auth import ENGINEER_LIST, User, authenticate, create_access_token
 
 router = APIRouter(tags=["auth"])
@@ -33,6 +34,17 @@ async def login(request: LoginRequest) -> dict[str, Any]:
         "email": user.email,
         "access_token": token,
         "token_type": "bearer",
+    }
+
+
+@router.get("/auth/me")
+async def me(user: User = Depends(require_auth)) -> dict[str, Any]:
+    """Return the authenticated user's profile for session restore checks."""
+    return {
+        "username": user.username,
+        "display_name": user.display_name,
+        "role": user.role.value,
+        "email": user.email,
     }
 
 
