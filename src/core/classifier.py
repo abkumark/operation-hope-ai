@@ -224,7 +224,8 @@ def _classify_with_llm(
 
     cat = TICKET_CATEGORIES[category_id]
 
-    # Confidence: clamp and apply calibration curve for LLM overconfidence
+    # Confidence: calibrate the raw LLM self-reported score once here before
+    # any keyword blending so downstream routing uses a conservative value.
     raw_conf = float(data.get("confidence", 0.5))
     confidence = calibrate_llm_confidence(raw_conf)
     # After calibration, cap at 0.95 as an additional safety measure

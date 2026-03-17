@@ -15,7 +15,14 @@ class Settings(BaseSettings):
 
     # OpenAI
     openai_api_key: str = Field(default="", description="OpenAI API key")
-    openai_model: str = Field(default="gpt-4o", description="OpenAI model name")
+    openai_model: str = Field(
+        default="us.anthropic.claude-sonnet-4-20250514-v1:0",
+        description="OpenAI-compatible model name",
+    )
+    openai_base_url: str = Field(
+        default="https://cxai-playground.cisco.com",
+        description="Custom OpenAI-compatible base URL",
+    )
 
     # Ollama
     ollama_base_url: str = Field(default="http://localhost:11434")

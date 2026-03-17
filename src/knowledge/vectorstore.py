@@ -39,7 +39,7 @@ class LangChainEmbeddingAdapter:
 
     def embed_query(self, input: list[str]) -> list[list[float]]:
         """ChromaDB >= 0.6 calls this for query-time embedding."""
-        return self.embedder.embed_documents(list(input))
+        return [self.embedder.embed_query(text) for text in list(input)]
 
     def name(self) -> str:
         return "langchain_adapter"
@@ -73,18 +73,16 @@ def get_or_create_collection(
 ) -> chromadb.Collection:
     """Get or create a Chroma collection with embedding model tracking.
 
-    IMPORTANT: Always attaches the current embedding function so that
-    query_texts operations use the SAME model that was used for ingestion.
     Logs a warning if there's an embedding model mismatch.
+
+    Query-time embedding is handled explicitly in search functions so this
+    helper avoids eagerly initializing embedding providers for existing
+    collections, which can trigger network/model loading during tests.
     """
     current_model = _get_embedding_model_name()
-    embedding_function = _get_embedding_adapter()
 
     try:
-        collection = client.get_collection(
-            name=name,
-            embedding_function=embedding_function,
-        )
+        collection = client.get_collection(name=name)
         # Check for embedding model mismatch
         stored_model = collection.metadata.get("embedding_model", "")
         if stored_model and stored_model != current_model:
@@ -96,6 +94,7 @@ def get_or_create_collection(
             )
         return collection
     except Exception:
+        embedding_function = _get_embedding_adapter()
         return client.get_or_create_collection(
             name=name,
             metadata={
@@ -278,8 +277,14 @@ def search_kb(
     elif len(conditions) > 1:
         where_filter = {"$and": conditions}
 
+    try:
+        query_embedding = _get_embedding_adapter()([query])[0]
+    except Exception as exc:
+        logger.debug("KB query embedding unavailable: %s", exc)
+        return []
+
     results = collection.query(
-        query_texts=[query],
+        query_embeddings=[query_embedding],
         n_results=min(n_results, collection.count()),
         where=where_filter,
     )
@@ -347,8 +352,14 @@ def search_tickets(
     if collection.count() == 0:
         return []
 
+    try:
+        query_embedding = _get_embedding_adapter()([query])[0]
+    except Exception as exc:
+        logger.debug("Ticket query embedding unavailable: %s", exc)
+        return []
+
     results = collection.query(
-        query_texts=[query],
+        query_embeddings=[query_embedding],
         n_results=min(n_results, collection.count()),
     )
 

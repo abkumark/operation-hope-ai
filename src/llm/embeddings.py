@@ -17,10 +17,13 @@ def get_embedding_function():
         )
     elif settings.active_provider == "openai":
         from langchain_openai import OpenAIEmbeddings
-        return OpenAIEmbeddings(
-            api_key=settings.openai_api_key,
-            model="text-embedding-3-small",
-        )
+        kwargs = {
+            "api_key": settings.openai_api_key,
+            "model": "text-embedding-3-small",
+        }
+        if settings.openai_base_url:
+            kwargs["base_url"] = settings.openai_base_url
+        return OpenAIEmbeddings(**kwargs)
     else:
         from langchain_huggingface import HuggingFaceEmbeddings
         return HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")

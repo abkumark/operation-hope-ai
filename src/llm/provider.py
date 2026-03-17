@@ -153,11 +153,11 @@ class LLMProvider(ABC):
         """Chat with retry and tracking. Returns response content string.
 
         Note: The `temperature` parameter is accepted for interface consistency
-        but may be ignored by providers that don't support it (e.g., Azure GPT-5.2).
+        but may be ignored by providers that don't support it.
         """
         if temperature != 0.1 and self.provider_name == "azure":
             logger.debug(
-                "Azure GPT-5.2 does not support temperature parameter (requested %.2f). "
+                "Selected Azure deployment does not use the temperature parameter (requested %.2f). "
                 "Response variability is model-controlled.",
                 temperature,
             )
@@ -216,7 +216,7 @@ class LLMProvider(ABC):
 
 
 # ---------------------------------------------------------------------------
-# Azure OpenAI (GPT-5.2 — does NOT support temperature parameter)
+# Azure OpenAI
 # ---------------------------------------------------------------------------
 
 class AzureOpenAIProvider(LLMProvider):
@@ -245,7 +245,7 @@ class AzureOpenAIProvider(LLMProvider):
             "messages": messages,
             "max_completion_tokens": max_tokens,
         }
-        # GPT-5.2 does NOT support temperature — intentionally omitted.
+        # Temperature intentionally omitted for Azure compatibility.
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
         response = self.client.chat.completions.create(**kwargs)
@@ -267,7 +267,10 @@ class AzureOpenAIProvider(LLMProvider):
 class OpenAIProvider(LLMProvider):
     def __init__(self):
         settings = get_settings()
-        self.client = OpenAI(api_key=settings.openai_api_key)
+        client_kwargs: dict = {"api_key": settings.openai_api_key}
+        if settings.openai_base_url:
+            client_kwargs["base_url"] = settings.openai_base_url
+        self.client = OpenAI(**client_kwargs)
         self.model = settings.openai_model
 
     @property

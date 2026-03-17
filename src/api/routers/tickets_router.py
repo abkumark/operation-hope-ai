@@ -46,6 +46,14 @@ from src.workflow.pipeline import (
 
 _logger = logging.getLogger(__name__)
 _EMAIL_RE = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
+_SPANISH_CHAR_RE = re.compile(r"[áéíóúñü¿¡]", re.IGNORECASE)
+_SPANISH_SIGNAL_PHRASES = (
+    "contraseña", "contrasena", "restablecer", "reiniciar", "acceso", "ayuda",
+    "iniciar sesión", "iniciar sesion", "no puedo", "correo", "problema",
+    "solicitud", "soporte", "gracias", "por favor", "necesito", "mi cuenta",
+    "recuperar", "usuario", "sesión", "sesion", "enlace", "correo electrónico",
+    "correo electronico",
+)
 
 router = APIRouter(tags=["tickets"])
 
@@ -56,6 +64,30 @@ def _get_ticket_or_404(ticket_id: str) -> PipelineResult:
     if row is None:
         raise HTTPException(status_code=404, detail="Ticket not found")
     return _load_pipeline_result(row)
+
+
+def _looks_spanish(text: str) -> bool:
+    normalized = (text or "").strip().lower()
+    if not normalized:
+        return False
+    if _SPANISH_CHAR_RE.search(normalized):
+        return True
+    return any(signal in normalized for signal in _SPANISH_SIGNAL_PHRASES)
+
+
+def _can_translate_to_english(text: str, language: str = "") -> bool:
+    normalized_lang = (language or "").strip().lower()
+    if normalized_lang in {"es", "spanish"}:
+        return True
+    return _looks_spanish(text)
+
+
+def _build_translation_meta(text: str, language: str = "") -> dict[str, Any]:
+    return {
+        "can_translate_to_english": _can_translate_to_english(text, language),
+        "detected_source_language": "es" if _can_translate_to_english(text, language) else "en",
+        "target_language": "en",
+    }
 
 
 # ── Public ticket submission (no auth required) ─────────────────────────
@@ -296,6 +328,9 @@ async def get_ticket(ticket_id: str, user: User = Depends(require_auth)) -> dict
         response_text = t.response.response_text
         kb_articles = t.response.kb_articles_used
     q_members = get_queue_members(t.routing.queue)
+    issue_text = "\n\n".join(part for part in [t.subject, t.description] if part)
+    issue_translation = _build_translation_meta(issue_text, t.classification.language)
+    resolution_translation = _build_translation_meta(t.ai_resolution or "", t.classification.language)
     return {
         "ticket_id": t.ticket_id,
         "subject": t.subject,
@@ -328,6 +363,13 @@ async def get_ticket(ticket_id: str, user: User = Depends(require_auth)) -> dict
             ],
         },
         "response_text": response_text,
+        "translation": {
+            "ticket": issue_translation,
+            "resolution": {
+                **resolution_translation,
+                "can_translate_to_english": bool(t.ai_resolution) and resolution_translation["can_translate_to_english"],
+            },
+        },
         "kb_articles_used": kb_articles,
         "processing_time_ms": t.processing_time_ms,
         "processed_at": t.processed_at.isoformat(),

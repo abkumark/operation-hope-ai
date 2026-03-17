@@ -318,6 +318,16 @@
                 <div class="mgmt-field-value" id="mgmt-r-subject"></div>
                 <div class="mgmt-field-label">Description</div>
                 <div class="mgmt-field-value mgmt-description" id="mgmt-r-description"></div>
+                <div id="mgmt-ticket-translate-container" style="display:none;margin-top:8px;">
+                  <button type="button" class="translate-toggle-btn" id="btn-mgmt-ticket-translate" onclick="translateMgmtTicketText()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/></svg>
+                    Translate ticket to English
+                  </button>
+                  <div id="mgmt-ticket-translation-result" class="translation-result-box">
+                    <div class="translation-label">English Translation</div>
+                    <div class="translation-text" id="mgmt-ticket-translated-text"></div>
+                  </div>
+                </div>
                 <div class="mgmt-field-label">Submitter</div>
                 <div class="mgmt-field-value" id="mgmt-r-submitter"></div>
               </div>
@@ -411,6 +421,16 @@
                 <div class="mgmt-field-value" id="mq-r-subject"></div>
                 <div class="mgmt-field-label">Description</div>
                 <div class="mgmt-field-value mgmt-description" id="mq-r-description"></div>
+                <div id="mq-ticket-translate-container" style="display:none;margin-top:8px;">
+                  <button type="button" class="translate-toggle-btn" id="btn-mq-ticket-translate" onclick="translateMqTicketText()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/></svg>
+                    Translate ticket to English
+                  </button>
+                  <div id="mq-ticket-translation-result" class="translation-result-box">
+                    <div class="translation-label">English Translation</div>
+                    <div class="translation-text" id="mq-ticket-translated-text"></div>
+                  </div>
+                </div>
                 <div class="mgmt-field-label">Submitter</div>
                 <div class="mgmt-field-value" id="mq-r-submitter"></div>
               </div>
@@ -510,6 +530,16 @@
               <!-- Tab: Overview -->
               <div class="exp-tab-content active" id="exp-tab-overview">
                 <div class="exp-desc-box" id="exp-description"></div>
+                <div id="exp-ticket-translate-container" style="display:none;margin-top:8px;">
+                  <button type="button" class="translate-toggle-btn" id="btn-translate-ticket" onclick="translateExplorerTicketText()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/></svg>
+                    Translate ticket to English
+                  </button>
+                  <div id="exp-ticket-translation-result" class="translation-result-box">
+                    <div class="translation-label">English Translation</div>
+                    <div class="translation-text" id="exp-ticket-translated-text"></div>
+                  </div>
+                </div>
                 <div class="exp-compact-grid">
                   <div class="exp-compact-cell">
                     <span class="exp-cell-label">Category</span>

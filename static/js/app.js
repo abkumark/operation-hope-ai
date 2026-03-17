@@ -7,6 +7,23 @@ let currentUser = null;
 let cachedEngineers = [];
 let cachedQueues = {};
 
+function _resetTranslateButton(btn, label = 'Translate to English') {
+  if (!btn) return;
+  btn.disabled = false;
+  btn.dataset.state = '';
+  btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/></svg> ${label}`;
+}
+
+function _setTranslateVisibility({ containerId, resultId, buttonId, shouldShow, buttonLabel = 'Translate to English' }) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const resultDiv = document.getElementById(resultId);
+  const btn = document.getElementById(buttonId);
+  container.style.display = shouldShow ? '' : 'none';
+  if (resultDiv) resultDiv.style.display = 'none';
+  if (btn) _resetTranslateButton(btn, buttonLabel);
+}
+
 /* ─── Landing Page Tabs ─── */
 function switchLandingTab(tab) {
   document.querySelectorAll('.landing-tab').forEach((t) => t.classList.remove('active'));
@@ -712,17 +729,20 @@ async function selectMgmtTicket(ticketId) {
     document.getElementById('mgmt-r-submitter').textContent = detail.submitter || '';
     document.getElementById('mgmt-resolution-text').value = detail.ai_resolution || '';
 
-    // Show translate button if ticket is in Spanish
-    const mgmtTranslateContainer = document.getElementById('mgmt-translate-container');
-    const mgmtTranslationResult = document.getElementById('mgmt-translation-result');
-    if (mgmtTranslateContainer) {
-      const ticketLang = (detail.classification?.language || 'en').toLowerCase();
-      const hasResolution = !!detail.ai_resolution;
-      mgmtTranslateContainer.style.display = (ticketLang === 'es' && hasResolution) ? '' : 'none';
-      mgmtTranslationResult.style.display = 'none';
-      const btn = document.getElementById('btn-mgmt-translate');
-      if (btn) { btn.disabled = false; btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/></svg> Translate to English'; }
-    }
+    const mgmtTicketText = `${detail.subject || ''}\n${detail.description || ''}`;
+    _setTranslateVisibility({
+      containerId: 'mgmt-ticket-translate-container',
+      resultId: 'mgmt-ticket-translation-result',
+      buttonId: 'btn-mgmt-ticket-translate',
+      shouldShow: !!detail.translation?.ticket?.can_translate_to_english,
+      buttonLabel: 'Translate ticket to English',
+    });
+    _setTranslateVisibility({
+      containerId: 'mgmt-translate-container',
+      resultId: 'mgmt-translation-result',
+      buttonId: 'btn-mgmt-translate',
+      shouldShow: !!detail.translation?.resolution?.can_translate_to_english,
+    });
 
     const similarRow = document.getElementById('mgmt-similar-badges');
     const ids = detail.similar_ticket_ids || [];
@@ -901,17 +921,20 @@ async function selectMyQueueTicket(ticketId) {
     document.getElementById('mq-ai-suggestion').textContent = detail.ai_resolution || 'No AI suggestion available.';
     document.getElementById('mq-resolution-text').value = '';
 
-    // Show translate button if ticket is in Spanish
-    const mqTranslateContainer = document.getElementById('mq-translate-container');
-    const mqTranslationResult = document.getElementById('mq-translation-result');
-    if (mqTranslateContainer) {
-      const ticketLang = (detail.classification?.language || 'en').toLowerCase();
-      const hasResolution = !!detail.ai_resolution;
-      mqTranslateContainer.style.display = (ticketLang === 'es' && hasResolution) ? '' : 'none';
-      mqTranslationResult.style.display = 'none';
-      const btn = document.getElementById('btn-mq-translate');
-      if (btn) { btn.disabled = false; btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/></svg> Translate to English'; }
-    }
+    const mqTicketText = `${detail.subject || ''}\n${detail.description || ''}`;
+    _setTranslateVisibility({
+      containerId: 'mq-ticket-translate-container',
+      resultId: 'mq-ticket-translation-result',
+      buttonId: 'btn-mq-ticket-translate',
+      shouldShow: !!detail.translation?.ticket?.can_translate_to_english,
+      buttonLabel: 'Translate ticket to English',
+    });
+    _setTranslateVisibility({
+      containerId: 'mq-translate-container',
+      resultId: 'mq-translation-result',
+      buttonId: 'btn-mq-translate',
+      shouldShow: !!detail.translation?.resolution?.can_translate_to_english,
+    });
 
     loadMyQueue();
   } catch {}
@@ -1074,16 +1097,20 @@ async function selectExplorerTicket(ticketId) {
 
     document.getElementById('exp-ai-resolution').textContent = d.ai_resolution || 'No AI resolution generated.';
 
-    // Show translate button for Spanish tickets
-    const translateContainer = document.getElementById('exp-translate-container');
-    const translationResult = document.getElementById('exp-translation-result');
-    if (translateContainer) {
-      const ticketLang = (d.classification?.language || 'en').toLowerCase();
-      translateContainer.style.display = (ticketLang === 'es' && d.ai_resolution) ? '' : 'none';
-      translationResult.style.display = 'none';
-      const btn = document.getElementById('btn-translate-resolution');
-      if (btn) { btn.disabled = false; btn.dataset.state = ''; btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/></svg> Translate to English'; }
-    }
+    const explorerTicketText = `${d.subject || ''}\n${d.description || ''}`;
+    _setTranslateVisibility({
+      containerId: 'exp-ticket-translate-container',
+      resultId: 'exp-ticket-translation-result',
+      buttonId: 'btn-translate-ticket',
+      shouldShow: !!d.translation?.ticket?.can_translate_to_english,
+      buttonLabel: 'Translate ticket to English',
+    });
+    _setTranslateVisibility({
+      containerId: 'exp-translate-container',
+      resultId: 'exp-translation-result',
+      buttonId: 'btn-translate-resolution',
+      shouldShow: !!d.translation?.resolution?.can_translate_to_english,
+    });
 
     const similarContainer = document.getElementById('exp-similar-tickets');
     const simIds = d.similar_ticket_ids || [];
@@ -1238,6 +1265,42 @@ async function translateMqResolution() {
     selectedMyQueueTicketId,
     () => document.getElementById('mq-ai-suggestion').textContent,
     'btn-mq-translate', 'mq-translation-result', 'mq-translated-text'
+  );
+}
+
+async function translateMgmtTicketText() {
+  _translatePanelText(
+    selectedMgmtTicketId,
+    () => {
+      const subject = document.getElementById('mgmt-r-subject')?.textContent || '';
+      const description = document.getElementById('mgmt-r-description')?.textContent || '';
+      return [subject, description].filter(Boolean).join('\n\n');
+    },
+    'btn-mgmt-ticket-translate', 'mgmt-ticket-translation-result', 'mgmt-ticket-translated-text'
+  );
+}
+
+async function translateMqTicketText() {
+  _translatePanelText(
+    selectedMyQueueTicketId,
+    () => {
+      const subject = document.getElementById('mq-r-subject')?.textContent || '';
+      const description = document.getElementById('mq-r-description')?.textContent || '';
+      return [subject, description].filter(Boolean).join('\n\n');
+    },
+    'btn-mq-ticket-translate', 'mq-ticket-translation-result', 'mq-ticket-translated-text'
+  );
+}
+
+async function translateExplorerTicketText() {
+  _translatePanelText(
+    selectedExplorerTicketId,
+    () => {
+      const subject = document.getElementById('exp-subject')?.textContent || '';
+      const description = document.getElementById('exp-description')?.textContent || '';
+      return [subject, description].filter(Boolean).join('\n\n');
+    },
+    'btn-translate-ticket', 'exp-ticket-translation-result', 'exp-ticket-translated-text'
   );
 }
 

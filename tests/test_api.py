@@ -217,6 +217,60 @@ class TestTicketEndpoints:
         resp = client.get("/api/v1/tickets/nonexistent-id", headers=admin_headers)
         assert resp.status_code == 404
 
+    @patch("src.llm.provider.get_llm_provider")
+    @patch("src.core.classifier.get_llm_provider")
+    def test_translate_ticket_text(self, mock_classifier_provider, mock_translate_provider, client, admin_headers):
+        mock_classifier_provider.side_effect = Exception("No LLM")
+        mock_provider = mock_translate_provider.return_value
+        mock_provider.chat.return_value = "I need to reset my password."
+
+        create_resp = client.post("/api/v1/tickets/process", json={
+            "subject": "Necesito ayuda",
+            "description": "No puedo restablecer mi contraseña.",
+            "submitter": "test@example.com",
+        }, headers=admin_headers)
+        ticket_id = create_resp.json()["ticket_id"]
+
+        resp = client.post(f"/api/v1/tickets/{ticket_id}/translate", json={
+            "text": "No puedo restablecer mi contraseña.",
+            "source_language": "es",
+            "target_language": "en",
+        }, headers=admin_headers)
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["translated_text"] == "I need to reset my password."
+        assert data["source_language"] == "es"
+        assert data["target_language"] == "en"
+
+    @patch("src.core.classifier.get_llm_provider")
+    def test_ticket_detail_includes_translation_metadata(self, mock_provider, client, admin_headers):
+        mock_provider.side_effect = Exception("No LLM")
+
+        create_resp = client.post("/api/v1/tickets/process", json={
+            "subject": "Necesito ayuda",
+            "description": "No puedo restablecer mi contraseña.",
+            "submitter": "test@example.com",
+        }, headers=admin_headers)
+        ticket_id = create_resp.json()["ticket_id"]
+
+        detail_resp = client.get(f"/api/v1/tickets/{ticket_id}", headers=admin_headers)
+
+        assert detail_resp.status_code == 200
+        detail = detail_resp.json()
+        assert detail["translation"]["ticket"]["can_translate_to_english"] is True
+        assert detail["translation"]["ticket"]["detected_source_language"] == "es"
+        assert detail["translation"]["resolution"]["target_language"] == "en"
+
+    def test_translate_ticket_text_missing_ticket_returns_404(self, client, admin_headers):
+        resp = client.post("/api/v1/tickets/HOPE-99999/translate", json={
+            "text": "No puedo restablecer mi contraseña.",
+            "source_language": "es",
+            "target_language": "en",
+        }, headers=admin_headers)
+
+        assert resp.status_code == 404
+
 
 class TestKBEndpoints:
     def test_kb_status(self, client):
