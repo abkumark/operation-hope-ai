@@ -98,7 +98,7 @@ class Settings(BaseSettings):
     auto_ingest_kb_on_startup: bool = Field(default=True)
     use_mock_dynamics: bool = Field(default=True)
     escalation_hours: float = Field(
-        default=24.0, description="Hours before an unresolved ticket is escalated"
+        default=12.0, description="Hours before an unresolved ticket is escalated"
     )
 
     # Paths
