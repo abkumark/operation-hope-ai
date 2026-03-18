@@ -57,7 +57,11 @@ def _record_notification(
 
 
 def _send_email(recipient: str, subject: str, html_body: str, text_body: str) -> None:
-    """Deliver an email via SMTP. Raises on failure."""
+    """Deliver an email via SMTP. Raises on failure.
+
+    The configured ``escalation_email`` is automatically BCC'd on every
+    outgoing message so the central mailbox stays in the loop.
+    """
     settings = get_settings()
 
     msg = MIMEMultipart("alternative")
@@ -67,16 +71,24 @@ def _send_email(recipient: str, subject: str, html_body: str, text_body: str) ->
     msg.attach(MIMEText(text_body, "plain"))
     msg.attach(MIMEText(html_body, "html"))
 
+    # Build envelope recipients: always BCC the escalation mailbox so the
+    # central inbox gets a copy of every email the system sends.
+    envelope_recipients = [recipient]
+    bcc_addr = settings.escalation_email
+    if bcc_addr and bcc_addr.lower() != recipient.lower():
+        envelope_recipients.append(bcc_addr)
+
     logger.info(
-        "Sending email via %s:%s from=%s to=%s",
-        settings.smtp_host, settings.smtp_port, settings.smtp_sender, recipient,
+        "Sending email via %s:%s from=%s to=%s bcc=%s",
+        settings.smtp_host, settings.smtp_port, settings.smtp_sender,
+        recipient, bcc_addr or "(none)",
     )
     with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15) as server:
         if settings.smtp_use_tls:
             server.starttls()
         if settings.smtp_username:
             server.login(settings.smtp_username, settings.smtp_password)
-        server.sendmail(settings.smtp_sender, [recipient], msg.as_string())
+        server.sendmail(settings.smtp_sender, envelope_recipients, msg.as_string())
     logger.info("Email delivered successfully to %s", recipient)
 
 
