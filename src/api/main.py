@@ -87,7 +87,7 @@ def _start_escalation_scheduler() -> None:
                 update_ticket_fields(ticket_id, status="Escalated")
                 escalated.append(ticket_id)
 
-                # Send escalation email to queue members + escalation address
+                # Send escalation email to queue members + escalation address + submitter
                 try:
                     members = get_queue_members(queue_name) if queue_name else []
                     recipients = get_engineer_emails(members) if members else []
@@ -95,6 +95,11 @@ def _start_escalation_scheduler() -> None:
                     escalation_email = settings.escalation_email or settings.smtp_sender
                     if escalation_email and not any(r[1] == escalation_email for r in recipients):
                         recipients.append(("Escalation Alerts", escalation_email))
+                    # Also notify the original submitter so they know
+                    sub_email = row.get("submitter_email", "")
+                    sub_name = row.get("submitter", "")
+                    if sub_email and not any(r[1] == sub_email for r in recipients):
+                        recipients.append((sub_name or "Submitter", sub_email))
                     send_escalation_notification(
                         ticket_id=ticket_id, subject=subject,
                         queue_name=queue_name, hours_open=hours_open,
