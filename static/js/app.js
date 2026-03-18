@@ -1,5 +1,7 @@
 const API = '/api/v1';
 const chartInstances = {};
+let _dashboardTimer = null;
+let _analyticsTimer = null;
 let selectedApprovalId = null;
 let selectedMgmtTicketId = null;
 let selectedMyQueueTicketId = null;
@@ -46,28 +48,43 @@ function switchLandingTab(tab) {
 }
 
 /* ─── Public Ticket Submission ─── */
-const SAMPLES = [
-  { label: 'Password Reset', subject: 'Cannot reset my password', description: 'I forgot my password for the client portal. I tried the reset link but it says my account does not exist.', name: 'John Davis', lang: 'en' },
-  { label: 'Course Video Issue', subject: 'Video not playing', description: 'The course video in Before You Buy module is stuck loading. I tried Chrome and Safari.', name: 'Maria Garcia', lang: 'en' },
-  { label: 'HUD Certificate', subject: 'Need HUD Certification', description: 'I completed all courses for homeownership. How do I get my HUD certificate?', name: 'James Wilson', lang: 'en' },
-  { label: 'Delta SSO', subject: 'Delta login issue', description: 'I am a Delta employee trying to sign in to Operation HOPE portal but SSO is not working.', name: 'Lisa Chen', lang: 'en' },
-  { label: 'Coach Change', subject: 'Need a new coach', description: 'I would like to be reassigned to a different coach. My current coach has not responded in weeks.', name: 'Robert Brown', lang: 'en' },
-];
+const SAMPLES = {
+  en: [
+    { label: 'Password Reset', subject: 'Cannot reset my password', description: 'I forgot my password for the client portal. I tried the reset link but it says my account does not exist.', name: 'John Davis', lang: 'en' },
+    { label: 'Course Video Issue', subject: 'Video not playing', description: 'The course video in Before You Buy module is stuck loading. I tried Chrome and Safari.', name: 'Maria Garcia', lang: 'en' },
+    { label: 'HUD Certificate', subject: 'Need HUD Certification', description: 'I completed all courses for homeownership. How do I get my HUD certificate?', name: 'James Wilson', lang: 'en' },
+    { label: 'Delta SSO', subject: 'Delta login issue', description: 'I am a Delta employee trying to sign in to Operation HOPE portal but SSO is not working.', name: 'Lisa Chen', lang: 'en' },
+    { label: 'Coach Change', subject: 'Need a new coach', description: 'I would like to be reassigned to a different coach. My current coach has not responded in weeks.', name: 'Robert Brown', lang: 'en' },
+  ],
+  es: [
+    { label: 'Restablecer Contraseña', subject: 'No puedo restablecer mi contraseña', description: 'Olvidé mi contraseña del portal del cliente. Intenté el enlace de restablecimiento pero dice que mi cuenta no existe.', name: 'Juan Rodríguez', lang: 'es' },
+    { label: 'Problema con Video', subject: 'El video no se reproduce', description: 'El video del curso en el módulo Antes de Comprar se queda cargando. Lo intenté en Chrome y Safari.', name: 'María García', lang: 'es' },
+    { label: 'Certificado HUD', subject: 'Necesito Certificación HUD', description: 'Completé todos los cursos de propiedad de vivienda. ¿Cómo obtengo mi certificado HUD?', name: 'Carlos Martínez', lang: 'es' },
+    { label: 'Delta SSO', subject: 'Problema de inicio de sesión de Delta', description: 'Soy empleado de Delta e intento iniciar sesión en el portal de Operation HOPE pero el SSO no funciona.', name: 'Ana López', lang: 'es' },
+    { label: 'Cambio de Asesor', subject: 'Necesito un nuevo asesor', description: 'Me gustaría ser reasignado a un asesor diferente. Mi asesor actual no ha respondido en semanas.', name: 'Roberto Hernández', lang: 'es' },
+  ],
+};
+
+function _currentFormLanguage() {
+  const el = document.getElementById('pub-language');
+  return (el && el.value) || 'en';
+}
 
 function initSampleChips() {
   const container = document.getElementById('sample-chips');
   if (!container) return;
-  container.innerHTML = SAMPLES.map((s, i) => `<button class="chip" type="button" onclick="fillPublicSample(${i})">${s.label}</button>`).join('');
+  const lang = _currentFormLanguage();
+  const samples = SAMPLES[lang] || SAMPLES.en;
+  container.innerHTML = samples.map((s, i) => `<button class="chip" type="button" onclick="fillPublicSample(${i})">${s.label}</button>`).join('');
 }
 
 function fillPublicSample(idx) {
-  const s = SAMPLES[idx];
+  const lang = _currentFormLanguage();
+  const samples = SAMPLES[lang] || SAMPLES.en;
+  const s = samples[idx];
+  if (!s) return;
   document.getElementById('pub-subject').value = s.subject;
   document.getElementById('pub-description').value = s.description;
-
-  // Auto-switch language button to match sample
-  const targetLang = s.lang || 'en';
-  setLanguage(targetLang);
 }
 
 const FORM_LABELS = {
@@ -149,6 +166,7 @@ function setLanguage(lang) {
     enBtn.style.color = '#003E7E';
   }
   switchFormLanguage(lang);
+  initSampleChips();
 }
 
 async function submitPublicTicket(e) {
@@ -445,11 +463,21 @@ function navigateTo(page) {
 
   toggleSidebar(false);
 
-  if (page === 'dashboard') loadDashboard();
+  // Clear auto-refresh timers when leaving pages
+  if (_dashboardTimer) { clearInterval(_dashboardTimer); _dashboardTimer = null; }
+  if (_analyticsTimer) { clearInterval(_analyticsTimer); _analyticsTimer = null; }
+
+  if (page === 'dashboard') {
+    loadDashboard();
+    _dashboardTimer = setInterval(loadDashboard, 30000); // auto-refresh every 30s
+  }
   if (page === 'management') loadManagement();
   if (page === 'myqueue') loadMyQueue();
   if (page === 'explorer') loadExplorer();
-  if (page === 'analytics') loadAnalytics();
+  if (page === 'analytics') {
+    loadAnalytics();
+    _analyticsTimer = setInterval(loadAnalytics, 30000);
+  }
   if (page === 'knowledge') { loadKnowledgeBase(); loadKBDrafts(); }
   if (page === 'settings') loadExpertiseConfig();
 }
@@ -551,7 +579,8 @@ async function loadDashboard() {
     const ai = summary.ai_assistance || {};
 
     document.getElementById('kpi-total').textContent = overview.total || (ticketData.total || 0);
-    document.getElementById('kpi-ai-draft').textContent = `${((ai.draft_rate || 0) * 100).toFixed(1)}%`;
+    const avgMs = (summary.processing_times || {}).avg_ms || 0;
+    document.getElementById('kpi-avg-response').textContent = avgMs >= 1000 ? `${(avgMs / 1000).toFixed(1)}s` : `${Math.round(avgMs)}ms`;
     document.getElementById('kpi-sent').textContent = ai.sent || 0;
     document.getElementById('kpi-pending').textContent = ai.pending_approval || 0;
 
@@ -579,7 +608,10 @@ async function loadDashboard() {
       escalate: '#dc2626',
     });
     renderInsights('dashboard-insights', summary.actionable_insights || []);
-  } catch {}
+  } catch (e) {
+    console.error('Dashboard load error:', e);
+    showToast('Dashboard failed to load: ' + (e.message || e), 'error');
+  }
 }
 
 /* ─── Approvals ─── */
@@ -607,7 +639,7 @@ async function loadApprovals() {
     if (!selectedApprovalId && approvals.length) {
       selectApproval(approvals[0].ticket_id);
     }
-  } catch {}
+  } catch (e) { console.error(e); }
 }
 
 async function selectApproval(ticketId) {
@@ -634,7 +666,7 @@ async function selectApproval(ticketId) {
           </div>`).join('')
       : '<div class="empty-state"><p>No history yet.</p></div>';
     loadApprovals();
-  } catch {}
+  } catch (e) { console.error(e); }
 }
 
 async function approveSelectedApproval() {
@@ -654,7 +686,7 @@ async function approveSelectedApproval() {
     selectedApprovalId = null;
     loadApprovals();
     loadDashboard();
-  } catch {}
+  } catch (e) { console.error(e); }
 }
 
 async function rejectSelectedApproval() {
@@ -674,7 +706,7 @@ async function rejectSelectedApproval() {
     selectedApprovalId = null;
     loadApprovals();
     loadDashboard();
-  } catch {}
+  } catch (e) { console.error(e); }
 }
 
 /* ─── Ticket Management ─── */
@@ -723,7 +755,10 @@ async function loadManagement() {
           <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();selectMgmtTicket('${t.ticket_id}')">Review</button>
         </td>
       </tr>`).join('');
-  } catch {}
+  } catch (e) {
+    console.error('Management load error:', e);
+    showToast('Ticket list failed to load: ' + (e.message || e), 'error');
+  }
 }
 
 async function selectMgmtTicket(ticketId) {
@@ -786,7 +821,7 @@ async function selectMgmtTicket(ticketId) {
     }
 
     loadManagement();
-  } catch {}
+  } catch (e) { console.error(e); }
 }
 
 async function populateEngineerDropdown(queueMembers, queueName) {
@@ -836,7 +871,7 @@ async function routeToEngineer() {
     });
     showToast(`Ticket ${selectedMgmtTicketId} routed to ${engineer}.`, 'success');
     selectMgmtTicket(selectedMgmtTicketId);
-  } catch {}
+  } catch (e) { console.error(e); }
 }
 
 async function resolveSelectedTicket() {
@@ -858,7 +893,7 @@ async function resolveSelectedTicket() {
     document.getElementById('mgmt-editor').style.display = 'none';
     loadManagement();
     loadDashboard();
-  } catch {}
+  } catch (e) { console.error(e); }
 }
 
 async function saveResolutionEdit() {
@@ -872,7 +907,7 @@ async function saveResolutionEdit() {
     });
     showToast('Resolution saved.', 'success');
     selectMgmtTicket(selectedMgmtTicketId);
-  } catch {}
+  } catch (e) { console.error(e); }
 }
 
 async function deleteSelectedTicket() {
@@ -886,7 +921,7 @@ async function deleteSelectedTicket() {
     document.getElementById('mgmt-editor').style.display = 'none';
     loadManagement();
     loadDashboard();
-  } catch {}
+  } catch (e) { console.error(e); }
 }
 
 /* ─── My Queue (Engineer) ─── */
@@ -915,7 +950,7 @@ async function loadMyQueue() {
           <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();selectMyQueueTicket('${t.ticket_id}')">Work</button>
         </td>
       </tr>`).join('');
-  } catch {}
+  } catch (e) { console.error(e); }
 }
 
 async function selectMyQueueTicket(ticketId) {
@@ -957,7 +992,7 @@ async function selectMyQueueTicket(ticketId) {
     });
 
     loadMyQueue();
-  } catch {}
+  } catch (e) { console.error(e); }
 }
 
 async function submitEngineerResolution() {
@@ -977,7 +1012,7 @@ async function submitEngineerResolution() {
     document.getElementById('myqueue-empty').style.display = 'block';
     document.getElementById('myqueue-editor').style.display = 'none';
     loadMyQueue();
-  } catch {}
+  } catch (e) { console.error(e); }
 }
 
 /* ─── Explorer ─── */
@@ -989,7 +1024,7 @@ async function loadExplorer() {
     const data = await apiFetch('/tickets');
     explorerTicketsCache = (data.tickets || []).slice().reverse();
     filterExplorer();
-  } catch {}
+  } catch (e) { console.error(e); }
 }
 
 function filterExplorer() {
@@ -1214,7 +1249,7 @@ async function selectExplorerTicket(ticketId) {
     } catch {
       recContainer.innerHTML = '<span style="font-size:.78rem;color:var(--hope-text-muted)">Could not load recommendations.</span>';
     }
-  } catch {}
+  } catch (e) { console.error(e); }
 }
 
 async function translateResolution() {
@@ -1291,39 +1326,97 @@ async function translateMqResolution() {
   );
 }
 
+/* ─── In-place ticket translation: replaces subject & description text directly ─── */
+async function _translateTicketInPlace(ticketId, subjectElId, descElId, btnId, resultDivId) {
+  if (!ticketId) return;
+  const btn = document.getElementById(btnId);
+  const subjectEl = document.getElementById(subjectElId);
+  const descEl = document.getElementById(descElId);
+  const resultDiv = document.getElementById(resultDivId);
+  if (!btn || !subjectEl || !descEl) return;
+
+  // Toggle: if already translated, restore originals
+  if (btn.dataset.state === 'translated') {
+    subjectEl.textContent = subjectEl.dataset.originalText || subjectEl.textContent;
+    descEl.textContent = descEl.dataset.originalText || descEl.textContent;
+    if (resultDiv) resultDiv.style.display = 'none';
+    btn.dataset.state = 'original';
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/></svg> Translate ticket to English';
+    return;
+  }
+
+  // If we already have cached translations, swap back to English
+  if (btn.dataset.state === 'original' && subjectEl.dataset.translatedText) {
+    subjectEl.textContent = subjectEl.dataset.translatedText;
+    descEl.textContent = descEl.dataset.translatedText;
+    btn.dataset.state = 'translated';
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/></svg> Show Original (Spanish)';
+    return;
+  }
+
+  // Store originals
+  subjectEl.dataset.originalText = subjectEl.textContent;
+  descEl.dataset.originalText = descEl.textContent;
+
+  const originalText = [subjectEl.textContent, descEl.textContent].filter(Boolean).join('\n\n');
+  if (!originalText) return;
+
+  btn.disabled = true;
+  btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/></svg> Translating...';
+
+  try {
+    const data = await apiFetch(`/tickets/${ticketId}/translate`, {
+      method: 'POST',
+      body: JSON.stringify({ text: originalText, source_language: 'es', target_language: 'en' }),
+    });
+    // Split translated text back into subject and description
+    const translatedParts = (data.translated_text || '').split('\n\n');
+    const translatedSubject = translatedParts[0] || data.translated_text;
+    const translatedDesc = translatedParts.length > 1 ? translatedParts.slice(1).join('\n\n') : '';
+
+    // Cache translations
+    subjectEl.dataset.translatedText = translatedSubject;
+    descEl.dataset.translatedText = translatedDesc || descEl.textContent;
+
+    // Replace in-place
+    subjectEl.textContent = translatedSubject;
+    if (translatedDesc) descEl.textContent = translatedDesc;
+
+    if (resultDiv) resultDiv.style.display = 'none';
+    btn.dataset.state = 'translated';
+    btn.disabled = false;
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/></svg> Show Original (Spanish)';
+  } catch (err) {
+    showToast('Translation failed. Please try again.', 'error');
+    // Restore originals on failure
+    subjectEl.textContent = subjectEl.dataset.originalText;
+    descEl.textContent = descEl.dataset.originalText;
+    btn.disabled = false;
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/></svg> Translate ticket to English';
+  }
+}
+
 async function translateMgmtTicketText() {
-  _translatePanelText(
+  _translateTicketInPlace(
     selectedMgmtTicketId,
-    () => {
-      const subject = document.getElementById('mgmt-r-subject')?.textContent || '';
-      const description = document.getElementById('mgmt-r-description')?.textContent || '';
-      return [subject, description].filter(Boolean).join('\n\n');
-    },
-    'btn-mgmt-ticket-translate', 'mgmt-ticket-translation-result', 'mgmt-ticket-translated-text'
+    'mgmt-r-subject', 'mgmt-r-description',
+    'btn-mgmt-ticket-translate', 'mgmt-ticket-translation-result'
   );
 }
 
 async function translateMqTicketText() {
-  _translatePanelText(
+  _translateTicketInPlace(
     selectedMyQueueTicketId,
-    () => {
-      const subject = document.getElementById('mq-r-subject')?.textContent || '';
-      const description = document.getElementById('mq-r-description')?.textContent || '';
-      return [subject, description].filter(Boolean).join('\n\n');
-    },
-    'btn-mq-ticket-translate', 'mq-ticket-translation-result', 'mq-ticket-translated-text'
+    'mq-r-subject', 'mq-r-description',
+    'btn-mq-ticket-translate', 'mq-ticket-translation-result'
   );
 }
 
 async function translateExplorerTicketText() {
-  _translatePanelText(
+  _translateTicketInPlace(
     selectedExplorerTicketId,
-    () => {
-      const subject = document.getElementById('exp-subject')?.textContent || '';
-      const description = document.getElementById('exp-description')?.textContent || '';
-      return [subject, description].filter(Boolean).join('\n\n');
-    },
-    'btn-translate-ticket', 'exp-ticket-translation-result', 'exp-ticket-translated-text'
+    'exp-subject', 'exp-description',
+    'btn-translate-ticket', 'exp-ticket-translation-result'
   );
 }
 
@@ -1358,23 +1451,15 @@ async function loadAnalytics() {
 
     const overview = report.overview || {};
     const ai = report.ai_assistance || {};
-    const aiHuman = trends.ai_vs_human || {};
+    const confDist = trends.confidence_distribution || {};
 
     document.getElementById('an-total').textContent = overview.total || 0;
-    document.getElementById('an-ai-resolved').textContent = `${aiHuman.ai_pct || 0}%`;
-    document.getElementById('an-human-resolved').textContent = `${aiHuman.human_pct || 0}%`;
+    document.getElementById('an-avg-confidence').textContent = `${Math.round((confDist.avg_confidence || 0) * 100)}%`;
+    document.getElementById('an-avg-processing').textContent = `${Math.round(ai.avg_processing_ms || 0)}ms`;
     document.getElementById('an-sent-rate').textContent = `${((ai.sent_rate || 0) * 100).toFixed(1)}%`;
     document.getElementById('an-pending-count').textContent = ai.pending_approval || 0;
 
-    renderPieChart('chart-ai-human', {
-      'AI Resolved': aiHuman.ai_resolved || 0,
-      'Human Resolved': aiHuman.human_resolved || 0,
-      'Pending': aiHuman.pending || 0,
-    }, {
-      'AI Resolved': '#059669',
-      'Human Resolved': '#003E7E',
-      'Pending': '#d97706',
-    });
+    renderConfidenceDistribution(confDist);
 
     renderTopRecurring(trends.top_recurring_issues || []);
 
@@ -1405,9 +1490,6 @@ async function loadAnalytics() {
 
     renderInsights('analytics-insights', report.actionable_insights || []);
 
-    renderLDInsights(trends.ld_insights || {});
-    renderProductInsights(trends.product_insights || {});
-
     // Time-based trends
     renderTimeTrends(trends.time_trends || {});
 
@@ -1419,7 +1501,10 @@ async function loadAnalytics() {
 
     // Submitter knowledge gaps
     renderSubmitterGaps(report.submitter_knowledge_gaps || []);
-  } catch (e) { console.error('Analytics load error:', e); }
+  } catch (e) {
+    console.error('Analytics load error:', e);
+    showToast('Analytics failed to load: ' + (e.message || e), 'error');
+  }
 }
 
 function renderTopRecurring(items) {
@@ -1480,66 +1565,37 @@ function renderTrainingAlerts(alerts) {
     </div>`).join('');
 }
 
-function renderLDInsights(ld) {
-  document.getElementById('ld-total').textContent = ld.total || 0;
-  document.getElementById('ld-howto-pct').textContent = `${ld.how_to_pct || 0}%`;
-  document.getElementById('ld-feedback').textContent = ld.feedback_count || 0;
-  const cats = ld.categories || [];
-  const catBox = document.getElementById('ld-categories');
-  if (cats.length === 0) {
-    catBox.innerHTML = '<div class="empty-state"><p>No L&D data yet.</p></div>';
-  } else {
-    catBox.innerHTML = cats.map((c, i) => `
-      <div class="recurring-item">
-        <div class="recurring-rank">${i + 1}</div>
-        <div class="recurring-info"><div class="recurring-label">${c.name}</div></div>
-        <div class="recurring-bar-wrap"><span class="recurring-pct">${c.count}</span></div>
-      </div>`).join('');
-  }
-  const recs = ld.recommendations || [];
-  const recBox = document.getElementById('ld-recs');
-  if (recs.length === 0) {
-    recBox.innerHTML = '<div class="empty-state"><p>No recommendations yet.</p></div>';
-  } else {
-    recBox.innerHTML = recs.map((r) => `
-      <div class="insight-item" style="border-left:3px solid var(--hope-gold);padding:8px 12px;margin-bottom:8px;font-size:.82rem;background:var(--hope-bg);border-radius:8px">
-        ${r}
-      </div>`).join('');
-  }
-}
-
-function renderProductInsights(pi) {
-  document.getElementById('pi-bugs').textContent = pi.bug_count || 0;
-  document.getElementById('pi-user-err').textContent = `${pi.user_error_pct || 0}%`;
-  document.getElementById('pi-bug-pct').textContent = `${pi.bug_pct || 0}%`;
-  const friction = pi.friction_points || [];
-  const fBox = document.getElementById('pi-friction');
-  if (friction.length === 0) {
-    fBox.innerHTML = '<div class="empty-state"><p>No friction data yet.</p></div>';
-  } else {
-    fBox.innerHTML = friction.map((f, i) => `
-      <div class="recurring-item">
-        <div class="recurring-rank">${i + 1}</div>
-        <div class="recurring-info">
-          <div class="recurring-label">${f.name}</div>
-          <div class="recurring-meta">${f.count} tickets &middot; ${f.reason}</div>
-        </div>
-      </div>`).join('');
-  }
-  const gaps = pi.feature_gaps || [];
-  const gBox = document.getElementById('pi-gaps');
-  if (gaps.length === 0) {
-    gBox.innerHTML = '<div class="empty-state"><p>No feature gap data yet.</p></div>';
-  } else {
-    gBox.innerHTML = gaps.map((g, i) => `
-      <div class="recurring-item">
-        <div class="recurring-rank">${i + 1}</div>
-        <div class="recurring-info">
-          <div class="recurring-label">${g.name}</div>
-          <div class="recurring-meta">${g.low_confidence_count} low-confidence out of ${g.total} &middot; ${g.reason}</div>
-        </div>
-      </div>`).join('');
-  }
+function renderConfidenceDistribution(confDist) {
+  const canvas = document.getElementById('chart-confidence-dist');
+  if (!canvas) return;
+  const buckets = confDist.buckets || {};
+  if (Object.keys(buckets).length === 0) return;
+  if (chartInstances['chart-confidence-dist']) chartInstances['chart-confidence-dist'].destroy();
+  const labels = Object.keys(buckets);
+  const values = Object.values(buckets);
+  const colors = ['#dc2626', '#d97706', '#059669', '#003E7E'];
+  chartInstances['chart-confidence-dist'] = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        data: values,
+        backgroundColor: colors.map(c => c + '33'),
+        borderColor: colors,
+        borderWidth: 2,
+        borderRadius: 4,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: 'Tickets', font: { size: 11 } } },
+        x: { ticks: { font: { size: 10 } } },
+      },
+    },
+  });
 }
 
 /* ─── Time Trends, Feedback, Program & Submitter Gaps ─── */
@@ -1733,7 +1789,7 @@ async function searchKB() {
         </div>
         <span class="badge badge-gold">${r.category}</span>
       </div>`).join('');
-  } catch {}
+  } catch (e) { console.error(e); }
 }
 
 async function reingestKB() {
@@ -1744,7 +1800,7 @@ async function reingestKB() {
     const data = await apiFetch('/kb/ingest?force=true', { method: 'POST' });
     showToast(`Ingested ${data.documents_added} document chunks.`, 'success');
     loadKnowledgeBase();
-  } catch {} finally {
+  } catch (e) { console.error(e); } finally {
     btn.disabled = false;
     btn.innerHTML = 'Re-ingest KB';
   }

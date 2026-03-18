@@ -215,8 +215,8 @@
           <div class="kpi-value" id="kpi-total">0</div>
         </div>
         <div class="kpi-card gold">
-          <div class="kpi-label">AI Draft Rate</div>
-          <div class="kpi-value" id="kpi-ai-draft">0%</div>
+          <div class="kpi-label">Avg Response Time</div>
+          <div class="kpi-value" id="kpi-avg-response">—</div>
         </div>
         <div class="kpi-card success">
           <div class="kpi-label">Responses Sent</div>
@@ -635,17 +635,17 @@
       <!-- Row 1: KPI strip -->
       <div class="kpi-grid" style="grid-template-columns:repeat(5,1fr)">
         <div class="kpi-card"><div class="kpi-label">Total Processed</div><div class="kpi-value" id="an-total">0</div></div>
-        <div class="kpi-card gold"><div class="kpi-label">AI Resolved</div><div class="kpi-value" id="an-ai-resolved">0%</div></div>
-        <div class="kpi-card"><div class="kpi-label">Human Resolved</div><div class="kpi-value" id="an-human-resolved">0%</div></div>
+        <div class="kpi-card gold"><div class="kpi-label">Avg Confidence</div><div class="kpi-value" id="an-avg-confidence">0%</div></div>
+        <div class="kpi-card"><div class="kpi-label">Avg Processing</div><div class="kpi-value" id="an-avg-processing">0ms</div></div>
         <div class="kpi-card success"><div class="kpi-label">Sent After Review</div><div class="kpi-value" id="an-sent-rate">0%</div></div>
         <div class="kpi-card"><div class="kpi-label">Pending Approval</div><div class="kpi-value" id="an-pending-count">0</div></div>
       </div>
 
-      <!-- Row 2: AI vs Human donut + Top 5 Recurring Issues -->
+      <!-- Row 2: Confidence Distribution + Top 5 Recurring Issues -->
       <div class="grid-2" style="margin-top:20px">
         <div class="card">
-          <div class="card-header">AI vs Human Resolution</div>
-          <div class="card-body"><div class="chart-container" style="height:280px"><canvas id="chart-ai-human"></canvas></div></div>
+          <div class="card-header">AI Confidence Distribution</div>
+          <div class="card-body"><div class="chart-container" style="height:280px"><canvas id="chart-confidence-dist"></canvas></div></div>
         </div>
         <div class="card">
           <div class="card-header">Top 5 Recurring Issues</div>
@@ -690,7 +690,42 @@
         </div>
       </div>
 
-      <!-- Row 5: Training Alerts + Knowledge Gaps -->
+      <!-- Row 5: Program Knowledge Gaps + Repeat Submitters -->
+      <div class="grid-2" style="margin-top:20px">
+        <div class="card">
+          <div class="card-header">Program/Queue Knowledge Gaps</div>
+          <div class="card-body">
+            <div id="an-program-gaps" class="recurring-list">
+              <div class="empty-state"><p>Not enough data for program analysis.</p></div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">Repeat Submitter Patterns</div>
+          <div class="card-body">
+            <div id="an-submitter-gaps">
+              <div class="empty-state"><p>No repeat submitter patterns detected.</p></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Row 6: Actionable Insights -->
+      <div class="card" style="margin-top:20px">
+        <div class="card-header">Actionable Insights</div>
+        <div class="card-body">
+          <div id="analytics-insights" class="insight-list">
+            <div class="empty-state"><p>Process tickets to surface recommendations.</p></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Row 7: Export -->
+      <div style="margin-top:20px;text-align:right">
+        <button type="button" class="btn btn-primary btn-sm" onclick="exportAnalyticsCSV()">Download Report (CSV)</button>
+      </div>
+
+      <!-- Row 8: Training Alerts + Knowledge Gaps -->
       <div class="grid-2" style="margin-top:20px">
         <div class="card">
           <div class="card-header">Training Alerts</div>
@@ -713,51 +748,7 @@
         </div>
       </div>
 
-      <!-- Row 6: L&D Insights (admin-only) -->
-      <div class="card admin-only" style="margin-top:20px">
-        <div class="card-header">L&amp;D Insights</div>
-        <div class="card-body">
-          <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px">
-            <div class="kpi-card"><div class="kpi-label">L&amp;D Tickets</div><div class="kpi-value" id="ld-total">0</div></div>
-            <div class="kpi-card gold"><div class="kpi-label">How-To %</div><div class="kpi-value" id="ld-howto-pct">0%</div></div>
-            <div class="kpi-card"><div class="kpi-label">Feedback Reports</div><div class="kpi-value" id="ld-feedback">0</div></div>
-          </div>
-          <div class="grid-2">
-            <div>
-              <h4 style="font-size:.84rem;color:var(--hope-navy);margin-bottom:8px">L&amp;D Category Breakdown</h4>
-              <div id="ld-categories" class="recurring-list"><div class="empty-state"><p>No L&amp;D data yet.</p></div></div>
-            </div>
-            <div>
-              <h4 style="font-size:.84rem;color:var(--hope-navy);margin-bottom:8px">Training Recommendations</h4>
-              <div id="ld-recs" class="insight-list"><div class="empty-state"><p>No recommendations yet.</p></div></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Row 7: Product Insights (admin-only) -->
-      <div class="card admin-only" style="margin-top:20px">
-        <div class="card-header">Product Insights</div>
-        <div class="card-body">
-          <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px">
-            <div class="kpi-card"><div class="kpi-label">Bug Reports</div><div class="kpi-value" id="pi-bugs">0</div></div>
-            <div class="kpi-card gold"><div class="kpi-label">User-Error %</div><div class="kpi-value" id="pi-user-err">0%</div></div>
-            <div class="kpi-card"><div class="kpi-label">Bug %</div><div class="kpi-value" id="pi-bug-pct">0%</div></div>
-          </div>
-          <div class="grid-2">
-            <div>
-              <h4 style="font-size:.84rem;color:var(--hope-navy);margin-bottom:8px">Product Friction Points</h4>
-              <div id="pi-friction" class="recurring-list"><div class="empty-state"><p>No friction data yet.</p></div></div>
-            </div>
-            <div>
-              <h4 style="font-size:.84rem;color:var(--hope-navy);margin-bottom:8px">Feature Gap Signals</h4>
-              <div id="pi-gaps" class="recurring-list"><div class="empty-state"><p>No feature gap data yet.</p></div></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Row 8: Time Trends -->
+      <!-- Row 9: Ticket Volume Over Time -->
       <div class="card" style="margin-top:20px">
         <div class="card-header">Ticket Volume Over Time</div>
         <div class="card-body">
@@ -767,47 +758,12 @@
         </div>
       </div>
 
-      <!-- Row 9: Resolution Feedback -->
+      <!-- Row 10: Resolution Feedback -->
       <div class="card" style="margin-top:20px">
         <div class="card-header">Resolution Feedback</div>
         <div class="card-body">
           <div id="an-feedback-summary">
             <div class="empty-state"><p>No resolution feedback collected yet.</p></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Row 10: Program Knowledge Gaps -->
-      <div class="grid-2" style="margin-top:20px">
-        <div class="card">
-          <div class="card-header">Program/Queue Knowledge Gaps</div>
-          <div class="card-body">
-            <div id="an-program-gaps" class="recurring-list">
-              <div class="empty-state"><p>Not enough data for program analysis.</p></div>
-            </div>
-          </div>
-        </div>
-        <div class="card">
-          <div class="card-header">Repeat Submitter Patterns</div>
-          <div class="card-body">
-            <div id="an-submitter-gaps">
-              <div class="empty-state"><p>No repeat submitter patterns detected.</p></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Row 11: Export -->
-      <div style="margin-top:20px;text-align:right">
-        <button type="button" class="btn btn-primary btn-sm" onclick="exportAnalyticsCSV()">Download Report (CSV)</button>
-      </div>
-
-      <!-- Row 12: Actionable Insights -->
-      <div class="card" style="margin-top:20px">
-        <div class="card-header">Actionable Insights</div>
-        <div class="card-body">
-          <div id="analytics-insights" class="insight-list">
-            <div class="empty-state"><p>Process tickets to surface recommendations.</p></div>
           </div>
         </div>
       </div>
@@ -950,6 +906,6 @@
 
 </div><!-- end app-shell -->
 <div id="toast-container" class="toast-container"></div>
-<script src="/static/js/app.js?v=2.3"></script>
+<script src="/static/js/app.js?v=3.0"></script>
 </body>
 </html>
